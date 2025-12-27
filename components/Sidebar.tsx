@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Package, ChefHat, ShoppingCart, FileText, UtensilsCrossed, X, Scale } from 'lucide-react';
+import { Package, ChefHat, ShoppingCart, FileText, UtensilsCrossed, X, Search } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: string;
@@ -12,10 +12,10 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
   const menuItems = [
     { id: 'items', label: 'أصناف المبيعات', icon: UtensilsCrossed },
-    { id: 'units', label: 'وحدات القياس', icon: Scale },
     { id: 'materials', label: 'الخامات الأساسية', icon: Package },
     { id: 'recipes', label: 'إدارة الوصفات', icon: ChefHat },
     { id: 'sales', label: 'إدخال المبيعات', icon: ShoppingCart },
+    { id: 'query', label: 'استعلام سريع', icon: Search },
     { id: 'reports', label: 'تقارير الاستهلاك', icon: FileText },
   ];
 
@@ -76,7 +76,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isOpen, setI
         </nav>
         
         <div className="p-6 border-t border-slate-800 text-xs text-slate-500 text-center">
-          نظام إدارة استهلاك المطاعم v1.0
+          نظام إدارة استهلاك المطاعم v1.1
         </div>
       </aside>
     </>

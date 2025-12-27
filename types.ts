@@ -1,18 +1,31 @@
 
-export interface Material {
+export interface MaterialGroup {
   id: string;
   name: string;
-  unit: string;
 }
 
+export interface SalesItemGroup {
+  id: string;
+  name: string;
+}
+
+// Unit interface required by UnitsPage.tsx
 export interface Unit {
   id: string;
   name: string;
 }
 
+export interface Material {
+  id: string;
+  name: string;
+  unit: string; // Now manually entered
+  groupId?: string;
+}
+
 export interface SalesItem {
   id: string;
   name: string;
+  groupId?: string;
 }
 
 export interface RecipeIngredient {

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Layers, List, FileSpreadsheet, Printer, ChefHat, Calendar, Filter, RotateCcw } from 'lucide-react';
+import { Layers, List, FileSpreadsheet, Printer, ChefHat, Calendar, Filter, RotateCcw, Search, Package, Utensils } from 'lucide-react';
 import { Material, SalesItem, Recipe, SaleEntry, AggregatedReportItem, DetailedReportItem } from '../types';
 
 interface Props {
@@ -19,19 +19,29 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
   
   const [startDate, setStartDate] = useState<string>(firstDayOfMonth);
   const [endDate, setEndDate] = useState<string>(today);
+  
+  // New Filter States
+  const [selectedMaterialId, setSelectedMaterialId] = useState<string>('');
+  const [selectedItemId, setSelectedItemId] = useState<string>('');
 
-  // Filtered sales based on selected date range
+  // Filtered sales based on selected date range and selected item
   const filteredSales = useMemo(() => {
     return sales.filter(sale => {
       const saleDate = sale.date;
-      return saleDate >= startDate && saleDate <= endDate;
+      const dateMatch = saleDate >= startDate && saleDate <= endDate;
+      const itemMatch = selectedItemId ? sale.itemId === selectedItemId : true;
+      return dateMatch && itemMatch;
     });
-  }, [sales, startDate, endDate]);
+  }, [sales, startDate, endDate, selectedItemId]);
 
   const aggregatedData = useMemo(() => {
     const reportMap: Record<string, { name: string; unit: string; total: number }> = {};
+    
+    // Initialize or filter materials
     materials.forEach(m => {
-      reportMap[m.id] = { name: m.name, unit: m.unit, total: 0 };
+      if (!selectedMaterialId || m.id === selectedMaterialId) {
+        reportMap[m.id] = { name: m.name, unit: m.unit, total: 0 };
+      }
     });
     
     filteredSales.forEach(sale => {
@@ -44,8 +54,11 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
         });
       }
     });
-    return Object.values(reportMap).filter(item => item.total > 0);
-  }, [materials, recipes, filteredSales]);
+
+    // If a material filter is active but no sales exist for it, we might still want to see 0 or just filter it out.
+    // Here we filter out items with 0 total unless a specific material is selected.
+    return Object.values(reportMap).filter(item => selectedMaterialId ? true : item.total > 0);
+  }, [materials, recipes, filteredSales, selectedMaterialId]);
 
   const detailedData = useMemo(() => {
     const results: DetailedReportItem[] = [];
@@ -58,40 +71,51 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
     Object.entries(itemSalesMap).forEach(([itemId, qtySold]) => {
       const item = items.find(i => i.id === itemId);
       const recipe = recipes.find(r => r.itemId === itemId);
+      
       if (item && recipe) {
-        results.push({
-          itemName: item.name,
-          quantitySold: qtySold,
-          ingredients: recipe.ingredients.map(ing => {
+        // Filter ingredients based on selected material
+        const filteredIngredients = recipe.ingredients
+          .filter(ing => !selectedMaterialId || ing.materialId === selectedMaterialId)
+          .map(ing => {
             const mat = materials.find(m => m.id === ing.materialId);
             return {
               materialName: mat?.name || 'مجهول',
               unit: mat?.unit || '',
               consumedQuantity: ing.quantity * qtySold
             };
-          })
-        });
+          });
+
+        if (filteredIngredients.length > 0) {
+          results.push({
+            itemName: item.name,
+            quantitySold: qtySold,
+            ingredients: filteredIngredients
+          });
+        }
       }
     });
     return results;
-  }, [items, recipes, filteredSales, materials]);
+  }, [items, recipes, filteredSales, materials, selectedMaterialId]);
 
   const resetFilter = () => {
     setStartDate(firstDayOfMonth);
     setEndDate(today);
+    setSelectedMaterialId('');
+    setSelectedItemId('');
   };
 
   const exportCSV = () => {
     const now = new Date().toLocaleString('ar-EG');
     const reportTitle = reportType === 'aggregated' ? "تقرير استهلاك الخامات (تجميعي)" : "تقرير استهلاك الخامات (تفصيلي)";
     
-    // Build Metadata Header
     let csvContent = `نظام CulinaTrack لإدارة استهلاك المطاعم\n`;
     csvContent += `نوع التقرير,${reportTitle}\n`;
     csvContent += `من تاريخ,${startDate}\n`;
     csvContent += `إلى تاريخ,${endDate}\n`;
+    if (selectedItemId) csvContent += `الصنف المفلتر,${items.find(i => i.id === selectedItemId)?.name}\n`;
+    if (selectedMaterialId) csvContent += `الخامة المفلترة,${materials.find(m => m.id === selectedMaterialId)?.name}\n`;
     csvContent += `تاريخ الاستخراج,${now}\n`;
-    csvContent += `\n`; // Empty line separator
+    csvContent += `\n`;
 
     if (reportType === 'aggregated') {
       csvContent += "الخامة,وحدة القياس,إجمالي الاستهلاك الفعلي\n";
@@ -139,45 +163,87 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
         <div className="text-left text-right">
           <h2 className="text-xl font-bold text-slate-700">تقرير استهلاك الخامات</h2>
           <p className="text-sm text-slate-500">الفترة من: {startDate} إلى: {endDate}</p>
+          {(selectedItemId || selectedMaterialId) && (
+            <p className="text-xs text-slate-400">
+              تصفية: {selectedItemId && `صنف: ${items.find(i => i.id === selectedItemId)?.name}`} 
+              {selectedItemId && selectedMaterialId && ' | '}
+              {selectedMaterialId && `خامة: ${materials.find(m => m.id === selectedMaterialId)?.name}`}
+            </p>
+          )}
         </div>
       </div>
 
       {/* Filter Section */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 no-print transition-colors">
-        <div className="flex items-center gap-2 mb-4 text-slate-700 font-bold">
+        <div className="flex items-center gap-2 mb-6 text-slate-700 font-bold border-b border-slate-100 pb-4">
           <Filter className="w-5 h-5 text-emerald-500" />
-          <h3>تصفية التقرير حسب التاريخ</h3>
+          <h3>تصفية التقارير الذكية</h3>
         </div>
-        <div className="flex flex-col md:flex-row items-end gap-4">
-          <div className="flex-1 w-full">
-            <label className="block text-xs font-bold text-slate-500 mb-1 mr-1">من تاريخ</label>
-            <div className="relative">
-              <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input 
-                type="date" 
-                className="w-full border border-slate-200 rounded-xl pr-10 pl-4 py-2 outline-none focus:ring-2 focus:ring-emerald-500 bg-white" 
-                value={startDate} 
-                onChange={(e) => setStartDate(e.target.value)} 
-              />
-            </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+          <div className="space-y-1.5">
+            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-500 mr-1">
+              <Calendar className="w-3.5 h-3.5" /> من تاريخ
+            </label>
+            <input 
+              type="date" 
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-sm" 
+              value={startDate} 
+              onChange={(e) => setStartDate(e.target.value)} 
+            />
           </div>
-          <div className="flex-1 w-full">
-            <label className="block text-xs font-bold text-slate-500 mb-1 mr-1">إلى تاريخ</label>
-            <div className="relative">
-              <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input 
-                type="date" 
-                className="w-full border border-slate-200 rounded-xl pr-10 pl-4 py-2 outline-none focus:ring-2 focus:ring-emerald-500 bg-white" 
-                value={endDate} 
-                onChange={(e) => setEndDate(e.target.value)} 
-              />
-            </div>
+
+          <div className="space-y-1.5">
+            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-500 mr-1">
+              <Calendar className="w-3.5 h-3.5" /> إلى تاريخ
+            </label>
+            <input 
+              type="date" 
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-sm" 
+              value={endDate} 
+              onChange={(e) => setEndDate(e.target.value)} 
+            />
           </div>
+
+          <div className="space-y-1.5">
+            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-500 mr-1">
+              <Package className="w-3.5 h-3.5" /> تصفية بالخامة
+            </label>
+            <select
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-sm"
+              value={selectedMaterialId}
+              onChange={(e) => setSelectedMaterialId(e.target.value)}
+            >
+              <option value="">كل الخامات</option>
+              {materials.map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-500 mr-1">
+              <Utensils className="w-3.5 h-3.5" /> تصفية بالصنف
+            </label>
+            <select
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-sm"
+              value={selectedItemId}
+              onChange={(e) => setSelectedItemId(e.target.value)}
+            >
+              <option value="">كل الأصناف</option>
+              {items.map(i => (
+                <option key={i.id} value={i.id}>{i.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-6 flex justify-end">
           <button 
             onClick={resetFilter}
-            className="flex items-center gap-2 px-4 py-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors font-bold whitespace-nowrap"
+            className="flex items-center gap-2 px-4 py-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all font-bold text-sm"
           >
-            <RotateCcw className="w-4 h-4" /> إعادة تعيين
+            <RotateCcw className="w-4 h-4" /> إعادة تعيين كافة الفلاتر
           </button>
         </div>
       </div>
@@ -207,7 +273,7 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
             onClick={exportCSV}
             className="flex items-center gap-2 text-sm text-emerald-700 border border-emerald-100 bg-emerald-50 px-4 py-2 rounded-xl hover:bg-emerald-100 transition-colors font-bold"
           >
-            <FileSpreadsheet className="w-4 h-4" /> تصدير CSV مطور
+            <FileSpreadsheet className="w-4 h-4" /> تصدير CSV
           </button>
           <button 
             onClick={exportPDF}
@@ -225,7 +291,7 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
               <h3 className="font-bold text-slate-800">إجمالي استهلاك الخامات</h3>
               <p className="text-xs text-slate-500">مجمع بناءً على الوصفات والمبيعات للفترة المحددة</p>
             </div>
-            <div className="text-left text-xs font-mono text-slate-400">
+            <div className="text-left text-xs font-mono text-slate-400 print:text-slate-600">
               {startDate} ⮕ {endDate}
             </div>
           </div>
@@ -249,7 +315,12 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan={3} className="px-6 py-12 text-center text-slate-400 italic">لا توجد بيانات مبيعات في هذه الفترة لحساب الاستهلاك</td>
+                    <td colSpan={3} className="px-6 py-12 text-center text-slate-400 italic">
+                      <div className="flex flex-col items-center gap-2">
+                        <Search className="w-8 h-8 opacity-20" />
+                        <span>لا توجد بيانات مطابقة لهذه الفلاتر</span>
+                      </div>
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -287,7 +358,10 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
             </div>
           )) : (
             <div className="bg-white p-12 text-center text-slate-400 rounded-2xl border border-slate-200 transition-colors">
-              لا توجد مبيعات تفصيلية لعرضها في الفترة المختارة.
+               <div className="flex flex-col items-center gap-2">
+                  <Search className="w-8 h-8 opacity-20" />
+                  <span>لا توجد مبيعات تفصيلية مطابقة للفلاتر المختارة</span>
+                </div>
             </div>
           )}
         </div>
@@ -296,6 +370,7 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
       {/* Print Footer */}
       <div className="hidden print:block mt-8 text-center text-[10px] text-slate-400 border-t pt-4">
         هذا التقرير تم إنشاؤه آلياً بواسطة نظام CulinaTrack - الفترة المشمولة: {startDate} إلى {endDate}
+        {(selectedItemId || selectedMaterialId) && ` | تصفية نشطة`}
       </div>
     </div>
   );

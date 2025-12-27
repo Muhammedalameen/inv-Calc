@@ -1,6 +1,6 @@
 
 import { createClient } from "@libsql/client";
-import { Material, SalesItem, Recipe, SaleEntry, Unit } from './types';
+import { Material, SalesItem, Recipe, SaleEntry, MaterialGroup, SalesItemGroup } from './types';
 
 const client = createClient({
   url: "libsql://inventory-cal-muhammedalameen.aws-us-west-2.turso.io",
@@ -10,62 +10,91 @@ const client = createClient({
 export const initDb = async () => {
   try {
     await client.batch([
-      "CREATE TABLE IF NOT EXISTS units (id TEXT PRIMARY KEY, name TEXT NOT NULL)",
-      "CREATE TABLE IF NOT EXISTS materials (id TEXT PRIMARY KEY, name TEXT, unit TEXT)",
-      "CREATE TABLE IF NOT EXISTS sales_items (id TEXT PRIMARY KEY, name TEXT)",
+      "CREATE TABLE IF NOT EXISTS material_groups (id TEXT PRIMARY KEY, name TEXT NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS sales_item_groups (id TEXT PRIMARY KEY, name TEXT NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS materials (id TEXT PRIMARY KEY, name TEXT, unit TEXT, group_id TEXT)",
+      "CREATE TABLE IF NOT EXISTS sales_items (id TEXT PRIMARY KEY, name TEXT, group_id TEXT)",
       "CREATE TABLE IF NOT EXISTS recipes (item_id TEXT, material_id TEXT, quantity REAL, PRIMARY KEY (item_id, material_id))",
       "CREATE TABLE IF NOT EXISTS sales (id TEXT PRIMARY KEY, item_id TEXT, quantity_sold INTEGER, sale_date TEXT)"
     ], "write");
-
-    const checkUnits = await client.execute("SELECT count(*) as count FROM units");
-    if (Number(checkUnits.rows[0].count) === 0) {
-      const defaultUnits = ['كجم', 'جرام', 'لتر', 'مل', 'حبة', 'كرتون', 'كيس'];
-      const seedQueries = defaultUnits.map(u => ({
-        sql: "INSERT INTO units (id, name) VALUES (?, ?)",
-        args: [crypto.randomUUID(), u]
-      }));
-      await client.batch(seedQueries, "write");
-    }
+    
+    // Cleanup old units table if it exists (Optional, but keeps DB clean)
+    // await client.execute("DROP TABLE IF EXISTS units");
   } catch (error) {
     console.error("Database Init Error:", error);
   }
 };
 
 export const db = {
-  getUnits: async (): Promise<Unit[]> => {
-    const rs = await client.execute("SELECT * FROM units ORDER BY name");
+  // Material Groups
+  getMaterialGroups: async (): Promise<MaterialGroup[]> => {
+    const rs = await client.execute("SELECT * FROM material_groups ORDER BY name");
     return rs.rows.map(row => ({ id: row.id as string, name: row.name as string }));
   },
-  saveUnit: async (u: Unit) => {
+  saveMaterialGroup: async (g: MaterialGroup) => {
     await client.execute({
-      sql: "INSERT OR REPLACE INTO units (id, name) VALUES (?, ?)",
-      args: [u.id, u.name]
+      sql: "INSERT OR REPLACE INTO material_groups (id, name) VALUES (?, ?)",
+      args: [g.id, g.name]
     });
   },
-  deleteUnit: async (id: string) => {
-    await client.execute({ sql: "DELETE FROM units WHERE id = ?", args: [id] });
+  deleteMaterialGroup: async (id: string) => {
+    await client.batch([
+      { sql: "UPDATE materials SET group_id = NULL WHERE group_id = ?", args: [id] },
+      { sql: "DELETE FROM material_groups WHERE id = ?", args: [id] }
+    ], "write");
   },
+
+  // Sales Item Groups
+  getSalesItemGroups: async (): Promise<SalesItemGroup[]> => {
+    const rs = await client.execute("SELECT * FROM sales_item_groups ORDER BY name");
+    return rs.rows.map(row => ({ id: row.id as string, name: row.name as string }));
+  },
+  saveSalesItemGroup: async (g: SalesItemGroup) => {
+    await client.execute({
+      sql: "INSERT OR REPLACE INTO sales_item_groups (id, name) VALUES (?, ?)",
+      args: [g.id, g.name]
+    });
+  },
+  deleteSalesItemGroup: async (id: string) => {
+    await client.batch([
+      { sql: "UPDATE sales_items SET group_id = NULL WHERE group_id = ?", args: [id] },
+      { sql: "DELETE FROM sales_item_groups WHERE id = ?", args: [id] }
+    ], "write");
+  },
+
+  // Materials
   getMaterials: async (): Promise<Material[]> => {
     const rs = await client.execute("SELECT * FROM materials ORDER BY name");
-    return rs.rows.map(row => ({ id: row.id as string, name: row.name as string, unit: row.unit as string }));
+    return rs.rows.map(row => ({ 
+      id: row.id as string, 
+      name: row.name as string, 
+      unit: row.unit as string,
+      groupId: row.group_id as string || undefined
+    }));
   },
   saveMaterial: async (m: Material) => {
     await client.execute({
-      sql: "INSERT OR REPLACE INTO materials (id, name, unit) VALUES (?, ?, ?)",
-      args: [m.id, m.name, m.unit]
+      sql: "INSERT OR REPLACE INTO materials (id, name, unit, group_id) VALUES (?, ?, ?, ?)",
+      args: [m.id, m.name, m.unit, m.groupId || null]
     });
   },
   deleteMaterial: async (id: string) => {
     await client.execute({ sql: "DELETE FROM materials WHERE id = ?", args: [id] });
   },
+
+  // Sales Items
   getItems: async (): Promise<SalesItem[]> => {
     const rs = await client.execute("SELECT * FROM sales_items ORDER BY name");
-    return rs.rows.map(row => ({ id: row.id as string, name: row.name as string }));
+    return rs.rows.map(row => ({ 
+      id: row.id as string, 
+      name: row.name as string,
+      groupId: row.group_id as string || undefined
+    }));
   },
   saveItem: async (i: SalesItem) => {
     await client.execute({
-      sql: "INSERT OR REPLACE INTO sales_items (id, name) VALUES (?, ?)",
-      args: [i.id, i.name]
+      sql: "INSERT OR REPLACE INTO sales_items (id, name, group_id) VALUES (?, ?, ?)",
+      args: [i.id, i.name, i.groupId || null]
     });
   },
   deleteItem: async (id: string) => {
@@ -74,6 +103,8 @@ export const db = {
       { sql: "DELETE FROM recipes WHERE item_id = ?", args: [id] }
     ], "write");
   },
+
+  // Recipes
   getRecipes: async (): Promise<Recipe[]> => {
     const rs = await client.execute("SELECT * FROM recipes");
     const grouped: Record<string, Recipe> = {};
@@ -97,6 +128,8 @@ export const db = {
     ];
     await client.batch(queries, "write");
   },
+
+  // Sales
   getSales: async (): Promise<SaleEntry[]> => {
     const rs = await client.execute("SELECT id, item_id as itemId, quantity_sold as quantitySold, sale_date as date FROM sales ORDER BY sale_date DESC");
     return rs.rows.map(row => ({

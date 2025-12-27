@@ -6,7 +6,8 @@ import {
   SalesItem, 
   Recipe, 
   SaleEntry,
-  Unit
+  MaterialGroup,
+  SalesItemGroup
 } from './types';
 import { db, initDb } from './db';
 
@@ -18,7 +19,7 @@ import SalesItemsPage from './components/SalesItemsPage';
 import RecipeBuilderPage from './components/RecipeBuilderPage';
 import SalesEntryPage from './components/SalesEntryPage';
 import ReportsPage from './components/ReportsPage';
-import UnitsPage from './components/UnitsPage';
+import QuickQueryPage from './components/QuickQueryPage';
 
 interface Toast {
   id: string;
@@ -27,14 +28,15 @@ interface Toast {
 }
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'materials' | 'items' | 'recipes' | 'sales' | 'reports' | 'units'>('items');
+  const [activeTab, setActiveTab] = useState<'materials' | 'items' | 'recipes' | 'sales' | 'reports' | 'query'>('items');
   const [isLoading, setIsLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   
   const [materials, setMaterials] = useState<Material[]>([]);
-  const [units, setUnits] = useState<Unit[]>([]);
+  const [materialGroups, setMaterialGroups] = useState<MaterialGroup[]>([]);
   const [salesItems, setSalesItems] = useState<SalesItem[]>([]);
+  const [salesItemGroups, setSalesItemGroups] = useState<SalesItemGroup[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [sales, setSales] = useState<SaleEntry[]>([]);
 
@@ -51,16 +53,18 @@ const App: React.FC = () => {
     const loadData = async () => {
       try {
         await initDb();
-        const [mats, itemUnits, items, recs, sls] = await Promise.all([
+        const [mats, matGrps, items, itemGrps, recs, sls] = await Promise.all([
           db.getMaterials(),
-          db.getUnits(),
+          db.getMaterialGroups(),
           db.getItems(),
+          db.getSalesItemGroups(),
           db.getRecipes(),
           db.getSales()
         ]);
         setMaterials(mats);
-        setUnits(itemUnits);
+        setMaterialGroups(matGrps);
         setSalesItems(items);
+        setSalesItemGroups(itemGrps);
         setRecipes(recs);
         setSales(sls);
       } catch (error) {
@@ -73,54 +77,68 @@ const App: React.FC = () => {
     loadData();
   }, [addToast]);
 
-  const handleAddUnit = async (u: Unit) => {
-    await db.saveUnit(u);
-    setUnits(prev => [...prev, u].sort((a,b) => a.name.localeCompare(b.name)));
-    addToast(`تمت إضافة الوحدة "${u.name}" بنجاح`);
+  // Material Group Handlers
+  const handleAddMaterialGroup = async (g: MaterialGroup) => {
+    await db.saveMaterialGroup(g);
+    setMaterialGroups(prev => [...prev, g]);
+    addToast(`تمت إضافة مجموعة "${g.name}"`);
+  };
+  const handleUpdateMaterialGroup = async (updated: MaterialGroup) => {
+    await db.saveMaterialGroup(updated);
+    setMaterialGroups(prev => prev.map(g => g.id === updated.id ? updated : g));
+  };
+  const handleDeleteMaterialGroup = async (id: string) => {
+    await db.deleteMaterialGroup(id);
+    setMaterialGroups(prev => prev.filter(g => g.id !== id));
+    setMaterials(prev => prev.map(m => m.groupId === id ? { ...m, groupId: undefined } : m));
+    addToast("تم حذف المجموعة");
   };
 
-  const handleUpdateUnit = async (updated: Unit) => {
-    await db.saveUnit(updated);
-    setUnits(prev => prev.map(u => u.id === updated.id ? updated : u).sort((a,b) => a.name.localeCompare(b.name)));
-    addToast("تم تحديث الوحدة بنجاح");
+  // Sales Item Group Handlers
+  const handleAddSalesItemGroup = async (g: SalesItemGroup) => {
+    await db.saveSalesItemGroup(g);
+    setSalesItemGroups(prev => [...prev, g]);
+    addToast(`تمت إضافة مجموعة "${g.name}"`);
+  };
+  const handleUpdateSalesItemGroup = async (updated: SalesItemGroup) => {
+    await db.saveSalesItemGroup(updated);
+    setSalesItemGroups(prev => prev.map(g => g.id === updated.id ? updated : g));
+  };
+  const handleDeleteSalesItemGroup = async (id: string) => {
+    await db.deleteSalesItemGroup(id);
+    setSalesItemGroups(prev => prev.filter(g => g.id !== id));
+    setSalesItems(prev => prev.map(i => i.groupId === id ? { ...i, groupId: undefined } : i));
+    addToast("تم حذف المجموعة");
   };
 
-  const handleDeleteUnit = async (id: string) => {
-    await db.deleteUnit(id);
-    setUnits(prev => prev.filter(u => u.id !== id));
-    addToast("تم حذف الوحدة");
-  };
-
+  // Material Handlers
   const handleAddMaterial = async (m: Material) => {
     await db.saveMaterial(m);
     setMaterials(prev => [...prev, m]);
     addToast(`تمت إضافة الخامة "${m.name}"`);
   };
-
   const handleUpdateMaterial = async (updated: Material) => {
     await db.saveMaterial(updated);
     setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
     addToast("تم تحديث بيانات الخامة");
   };
-
   const handleDeleteMaterial = async (id: string) => {
     await db.deleteMaterial(id);
     setMaterials(prev => prev.filter(m => m.id !== id));
     addToast("تم حذف الخامة");
   };
 
+  // Item Handlers
   const handleAddItem = async (item: SalesItem) => {
     await db.saveItem(item);
     setSalesItems(prev => [...prev, item]);
     addToast(`تمت إضافة الصنف "${item.name}"`);
   };
-
   const handleUpdateItem = async (updated: SalesItem) => {
     await db.saveItem(updated);
     setSalesItems(prev => prev.map(i => i.id === updated.id ? updated : i));
     addToast("تم تحديث الصنف");
   };
-
   const handleDeleteItem = async (id: string) => {
     await db.deleteItem(id);
     setSalesItems(prev => prev.filter(i => i.id !== id));
@@ -170,32 +188,30 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'units':
-        return (
-          <UnitsPage 
-            units={units} 
-            onAdd={handleAddUnit} 
-            onUpdate={handleUpdateUnit} 
-            onDelete={handleDeleteUnit} 
-          />
-        );
       case 'materials':
         return (
           <MaterialsPage 
             materials={materials}
-            units={units} 
+            groups={materialGroups} 
             onAdd={handleAddMaterial} 
             onUpdate={handleUpdateMaterial} 
-            onDelete={handleDeleteMaterial} 
+            onDelete={handleDeleteMaterial}
+            onAddGroup={handleAddMaterialGroup}
+            onUpdateGroup={handleUpdateMaterialGroup}
+            onDeleteGroup={handleDeleteMaterialGroup}
           />
         );
       case 'items':
         return (
           <SalesItemsPage 
-            items={salesItems} 
+            items={salesItems}
+            groups={salesItemGroups}
             onAdd={handleAddItem} 
             onUpdate={handleUpdateItem} 
             onDelete={handleDeleteItem} 
+            onAddGroup={handleAddSalesItemGroup}
+            onUpdateGroup={handleUpdateSalesItemGroup}
+            onDeleteGroup={handleDeleteSalesItemGroup}
           />
         );
       case 'recipes':
@@ -224,6 +240,14 @@ const App: React.FC = () => {
             items={salesItems} 
             recipes={recipes} 
             sales={sales} 
+          />
+        );
+      case 'query':
+        return (
+          <QuickQueryPage 
+            items={salesItems} 
+            materials={materials} 
+            recipes={recipes} 
           />
         );
       default:

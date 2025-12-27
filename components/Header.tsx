@@ -15,6 +15,7 @@ const Header: React.FC<HeaderProps> = ({ activeTab, onOpenSidebar }) => {
     recipes: 'هندسة الوصفات',
     sales: 'المبيعات اليومية',
     reports: 'تقارير الاستهلاك الفعلي',
+    query: 'استعلام سريع عن الاستهلاك',
   };
 
   return (
