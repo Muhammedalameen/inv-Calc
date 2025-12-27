@@ -31,13 +31,6 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('theme') === 'dark' || 
-             (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    }
-    return false;
-  });
   
   const [materials, setMaterials] = useState<Material[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
@@ -52,17 +45,6 @@ const App: React.FC = () => {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 3000);
   }, []);
-
-  // Theme management
-  useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  }, [isDarkMode]);
 
   // Initial Data Load
   useEffect(() => {
@@ -90,8 +72,6 @@ const App: React.FC = () => {
     };
     loadData();
   }, [addToast]);
-
-  const toggleDarkMode = () => setIsDarkMode(prev => !prev);
 
   const handleAddUnit = async (u: Unit) => {
     await db.saveUnit(u);
@@ -178,7 +158,7 @@ const App: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white space-y-4">
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-800 space-y-4">
         <ChefHat className="w-16 h-16 text-emerald-500 animate-bounce" />
         <div className="flex items-center gap-2 text-xl font-bold">
           <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
@@ -252,7 +232,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-x-hidden transition-colors duration-300" dir="rtl">
+    <div className="flex min-h-screen bg-slate-50 text-slate-900 overflow-x-hidden" dir="rtl">
       {/* Toast Container */}
       <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-3 pointer-events-none">
         {toasts.map(toast => (
@@ -260,8 +240,8 @@ const App: React.FC = () => {
             key={toast.id} 
             className={`flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border pointer-events-auto animate-in slide-in-from-top-4 duration-300 ${
               toast.type === 'success' 
-                ? 'bg-white dark:bg-slate-800 border-emerald-100 dark:border-emerald-900/30 text-emerald-900 dark:text-emerald-100' 
-                : 'bg-rose-50 dark:bg-slate-800 border-rose-100 dark:border-rose-900/30 text-rose-900 dark:text-rose-100'
+                ? 'bg-white border-emerald-100 text-emerald-900' 
+                : 'bg-rose-50 border-rose-100 text-rose-900'
             }`}
           >
             {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <AlertCircle className="w-5 h-5 text-rose-500" />}
@@ -283,8 +263,6 @@ const App: React.FC = () => {
         <Header 
           activeTab={activeTab} 
           onOpenSidebar={() => setIsSidebarOpen(true)}
-          isDarkMode={isDarkMode}
-          toggleDarkMode={toggleDarkMode}
         />
         <main className="p-4 md:p-8 flex-1 overflow-y-auto">
           {renderContent()}
