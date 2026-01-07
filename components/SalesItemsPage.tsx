@@ -6,11 +6,12 @@ import { SalesItem, SalesItemGroup } from '../types';
 interface Props {
   items: SalesItem[];
   groups: SalesItemGroup[];
-  onAdd: (i: SalesItem) => Promise<void>;
-  onUpdate: (i: SalesItem) => Promise<void>;
+  // Fix: Prop types now use Omit to acknowledge restaurantId is handled by parent
+  onAdd: (i: Omit<SalesItem, 'restaurantId'>) => Promise<void>;
+  onUpdate: (i: Omit<SalesItem, 'restaurantId'>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
-  onAddGroup: (g: SalesItemGroup) => Promise<void>;
-  onUpdateGroup: (g: SalesItemGroup) => Promise<void>;
+  onAddGroup: (g: Omit<SalesItemGroup, 'restaurantId'>) => Promise<void>;
+  onUpdateGroup: (g: Omit<SalesItemGroup, 'restaurantId'>) => Promise<void>;
   onDeleteGroup: (id: string) => Promise<void>;
 }
 
@@ -34,8 +35,9 @@ const SalesItemsPage: React.FC<Props> = ({
     if (!name.trim()) return setError('يرجى إدخال اسم الصنف');
     if (items.some(i => i.name.trim().toLowerCase() === name.trim().toLowerCase())) return setError('هذا الصنف موجود بالفعل');
 
+    // Fix: Passing partial object is now allowed by updated onAdd prop type
     await onAdd({ 
-      id: crypto.randomUUID(), 
+      id: crypto.randomUUID() as `${string}-${string}-${string}-${string}-${string}`, 
       name: name.trim(),
       groupId: selectedGroupId || undefined
     });
@@ -45,6 +47,7 @@ const SalesItemsPage: React.FC<Props> = ({
 
   const saveEdit = async (id: string) => {
     if (!editName.trim()) return;
+    // Fix: Passing partial object is now allowed by updated onUpdate prop type
     await onUpdate({ 
       id, 
       name: editName.trim(),
@@ -56,7 +59,8 @@ const SalesItemsPage: React.FC<Props> = ({
   const handleAddGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGroupName.trim()) return;
-    await onAddGroup({ id: crypto.randomUUID(), name: newGroupName.trim() });
+    // Fix: Passing partial object is now allowed by updated onAddGroup prop type
+    await onAddGroup({ id: crypto.randomUUID() as `${string}-${string}-${string}-${string}-${string}`, name: newGroupName.trim() });
     setNewGroupName('');
   };
 

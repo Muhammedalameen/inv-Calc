@@ -6,7 +6,8 @@ import { SalesItem, SaleEntry } from '../types';
 interface Props {
   items: SalesItem[];
   sales: SaleEntry[];
-  onSave: (newSales: SaleEntry[]) => Promise<void>;
+  // Fix: onSave handler now expects Omit[] to match parent logic
+  onSave: (newSales: Omit<SaleEntry, 'restaurantId'>[]) => Promise<void>;
   onDeleteSale: (id: string) => Promise<void>;
   onUpdateSale: (id: string, quantity: number) => Promise<void>;
 }
@@ -49,8 +50,9 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, onSave, onDeleteSale, o
 
     setIsSaving(true);
     try {
-      const newEntries: SaleEntry[] = validRows.map(r => ({
-        id: crypto.randomUUID(),
+      // Fix: Removed explicit : SaleEntry[] type because restaurantId is added by parent
+      const newEntries = validRows.map(r => ({
+        id: crypto.randomUUID() as `${string}-${string}-${string}-${string}-${string}`,
         itemId: r.itemId,
         quantitySold: r.quantity,
         date
@@ -207,6 +209,7 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, onSave, onDeleteSale, o
                                   <Check className="w-4 h-4" />
                                 </button>
                                 <button 
+                                  // Fix: Changed setEditingId to setEditingSaleId
                                   onClick={() => setEditingSaleId(null)}
                                   className="p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
                                 >

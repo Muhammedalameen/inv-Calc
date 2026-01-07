@@ -1,13 +1,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChefHat, Loader2, CheckCircle2, AlertCircle, X } from 'lucide-react';
+import { ChefHat, Loader2, CheckCircle2, AlertCircle, X, Store, Settings, Plus, Trash2, ArrowRight } from 'lucide-react';
 import { 
-  Material, 
-  SalesItem, 
-  Recipe, 
-  SaleEntry,
-  MaterialGroup,
-  SalesItemGroup
+  Material, SalesItem, Recipe, SaleEntry,
+  MaterialGroup, SalesItemGroup, Restaurant
 } from './types';
 import { db, initDb } from './db';
 
@@ -28,6 +24,11 @@ interface Toast {
 }
 
 const App: React.FC = () => {
+  const [currentRestaurant, setCurrentRestaurant] = useState<Restaurant | null>(null);
+  const [isManagerMode, setIsManagerMode] = useState(false);
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [newRestName, setNewRestName] = useState('');
+
   const [activeTab, setActiveTab] = useState<'materials' | 'items' | 'recipes' | 'sales' | 'reports' | 'query'>('items');
   const [isLoading, setIsLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -48,18 +49,31 @@ const App: React.FC = () => {
     }, 3000);
   }, []);
 
-  // Initial Data Load
+  // Initial DB Load
   useEffect(() => {
+    const init = async () => {
+      await initDb();
+      const rests = await db.getRestaurants();
+      setRestaurants(rests);
+      setIsLoading(false);
+    };
+    init();
+  }, []);
+
+  // Data load per Restaurant
+  useEffect(() => {
+    if (!currentRestaurant) return;
+
     const loadData = async () => {
+      setIsLoading(true);
       try {
-        await initDb();
         const [mats, matGrps, items, itemGrps, recs, sls] = await Promise.all([
-          db.getMaterials(),
-          db.getMaterialGroups(),
-          db.getItems(),
-          db.getSalesItemGroups(),
-          db.getRecipes(),
-          db.getSales()
+          db.getMaterials(currentRestaurant.id),
+          db.getMaterialGroups(currentRestaurant.id),
+          db.getItems(currentRestaurant.id),
+          db.getSalesItemGroups(currentRestaurant.id),
+          db.getRecipes(currentRestaurant.id),
+          db.getSales(currentRestaurant.id)
         ]);
         setMaterials(mats);
         setMaterialGroups(matGrps);
@@ -68,124 +82,212 @@ const App: React.FC = () => {
         setRecipes(recs);
         setSales(sls);
       } catch (error) {
-        console.error("Critical: Could not load data from Turso", error);
-        addToast("فشل الاتصال بقاعدة البيانات", "error");
+        addToast("فشل تحميل بيانات المطعم", "error");
       } finally {
         setIsLoading(false);
       }
     };
     loadData();
-  }, [addToast]);
+  }, [currentRestaurant, addToast]);
 
-  // Material Group Handlers
-  const handleAddMaterialGroup = async (g: MaterialGroup) => {
-    await db.saveMaterialGroup(g);
-    setMaterialGroups(prev => [...prev, g]);
-    addToast(`تمت إضافة مجموعة "${g.name}"`);
+  const handleCreateRestaurant = async () => {
+    if (!newRestName.trim()) return;
+    const r: Restaurant = { id: crypto.randomUUID(), name: newRestName.trim() };
+    await db.saveRestaurant(r);
+    setRestaurants(prev => [...prev, r]);
+    setNewRestName('');
+    addToast(`تم إنشاء مطعم "${r.name}" بنجاح`);
   };
-  const handleUpdateMaterialGroup = async (updated: MaterialGroup) => {
-    await db.saveMaterialGroup(updated);
-    setMaterialGroups(prev => prev.map(g => g.id === updated.id ? updated : g));
+
+  const handleDeleteRestaurant = async (id: string) => {
+    if (confirm("سيتم حذف كافة بيانات المطعم بشكل نهائي! هل أنت متأكد؟")) {
+      await db.deleteRestaurant(id);
+      setRestaurants(prev => prev.filter(r => r.id !== id));
+      addToast("تم حذف المطعم وبياناته");
+    }
+  };
+
+  const handleAddMaterialGroup = async (g: Omit<MaterialGroup, 'restaurantId'>) => {
+    if (!currentRestaurant) return;
+    const group = { ...g, restaurantId: currentRestaurant.id };
+    await db.saveMaterialGroup(group);
+    setMaterialGroups(prev => [...prev, group]);
   };
   const handleDeleteMaterialGroup = async (id: string) => {
     await db.deleteMaterialGroup(id);
     setMaterialGroups(prev => prev.filter(g => g.id !== id));
     setMaterials(prev => prev.map(m => m.groupId === id ? { ...m, groupId: undefined } : m));
-    addToast("تم حذف المجموعة");
   };
 
-  // Sales Item Group Handlers
-  const handleAddSalesItemGroup = async (g: SalesItemGroup) => {
-    await db.saveSalesItemGroup(g);
-    setSalesItemGroups(prev => [...prev, g]);
-    addToast(`تمت إضافة مجموعة "${g.name}"`);
-  };
-  const handleUpdateSalesItemGroup = async (updated: SalesItemGroup) => {
-    await db.saveSalesItemGroup(updated);
-    setSalesItemGroups(prev => prev.map(g => g.id === updated.id ? updated : g));
+  const handleAddSalesItemGroup = async (g: Omit<SalesItemGroup, 'restaurantId'>) => {
+    if (!currentRestaurant) return;
+    const group = { ...g, restaurantId: currentRestaurant.id };
+    await db.saveSalesItemGroup(group);
+    setSalesItemGroups(prev => [...prev, group]);
   };
   const handleDeleteSalesItemGroup = async (id: string) => {
     await db.deleteSalesItemGroup(id);
     setSalesItemGroups(prev => prev.filter(g => g.id !== id));
     setSalesItems(prev => prev.map(i => i.groupId === id ? { ...i, groupId: undefined } : i));
-    addToast("تم حذف المجموعة");
   };
 
-  // Material Handlers
-  const handleAddMaterial = async (m: Material) => {
-    await db.saveMaterial(m);
-    setMaterials(prev => [...prev, m]);
-    addToast(`تمت إضافة الخامة "${m.name}"`);
+  const handleAddMaterial = async (m: Omit<Material, 'restaurantId'>) => {
+    if (!currentRestaurant) return;
+    const mat = { ...m, restaurantId: currentRestaurant.id };
+    await db.saveMaterial(mat);
+    setMaterials(prev => [...prev, mat]);
   };
-  const handleUpdateMaterial = async (updated: Material) => {
-    await db.saveMaterial(updated);
-    setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
-    addToast("تم تحديث بيانات الخامة");
+  // Fix: Changed handleUpdateMaterial parameter type to Omit<Material, 'restaurantId'>
+  const handleUpdateMaterial = async (m: Omit<Material, 'restaurantId'>) => {
+    if (!currentRestaurant) return;
+    const mat: Material = { ...m, restaurantId: currentRestaurant.id };
+    await db.saveMaterial(mat);
+    setMaterials(prev => prev.map(old => old.id === m.id ? mat : old));
   };
   const handleDeleteMaterial = async (id: string) => {
     await db.deleteMaterial(id);
     setMaterials(prev => prev.filter(m => m.id !== id));
-    addToast("تم حذف الخامة");
   };
 
-  // Item Handlers
-  const handleAddItem = async (item: SalesItem) => {
+  const handleAddItem = async (i: Omit<SalesItem, 'restaurantId'>) => {
+    if (!currentRestaurant) return;
+    const item = { ...i, restaurantId: currentRestaurant.id };
     await db.saveItem(item);
     setSalesItems(prev => [...prev, item]);
-    addToast(`تمت إضافة الصنف "${item.name}"`);
   };
-  const handleUpdateItem = async (updated: SalesItem) => {
-    await db.saveItem(updated);
-    setSalesItems(prev => prev.map(i => i.id === updated.id ? updated : i));
-    addToast("تم تحديث الصنف");
+  // Fix: Changed handleUpdateItem parameter type to Omit<SalesItem, 'restaurantId'>
+  const handleUpdateItem = async (i: Omit<SalesItem, 'restaurantId'>) => {
+    if (!currentRestaurant) return;
+    const item: SalesItem = { ...i, restaurantId: currentRestaurant.id };
+    await db.saveItem(item);
+    setSalesItems(prev => prev.map(old => old.id === i.id ? item : old));
   };
   const handleDeleteItem = async (id: string) => {
     await db.deleteItem(id);
     setSalesItems(prev => prev.filter(i => i.id !== id));
-    setRecipes(prev => prev.filter(r => r.itemId !== id));
-    addToast("تم حذف الصنف والوصفة المرتبطة به");
   };
 
-  const handleSaveRecipe = async (recipe: Recipe) => {
+  const handleSaveRecipe = async (r: Omit<Recipe, 'restaurantId'>) => {
+    if (!currentRestaurant) return;
+    const recipe = { ...r, restaurantId: currentRestaurant.id };
     await db.saveRecipe(recipe);
     setRecipes(prev => {
-      const exists = prev.some(r => r.itemId === recipe.itemId);
-      if (exists) return prev.map(r => r.itemId === recipe.itemId ? recipe : r);
-      return [...prev, recipe];
+      const exists = prev.some(old => old.itemId === recipe.itemId);
+      return exists ? prev.map(old => old.itemId === recipe.itemId ? recipe : old) : [...prev, recipe];
     });
-    addToast("تم حفظ الوصفة بنجاح");
   };
 
-  const handleSaveSales = async (newSales: SaleEntry[]) => {
-    await db.saveSales(newSales);
-    setSales(prev => [...newSales, ...prev]);
-    addToast(`تم تسجيل ${newSales.length} عملية مبيعات بنجاح`);
+  const handleSaveSales = async (entries: Omit<SaleEntry, 'restaurantId'>[]) => {
+    if (!currentRestaurant) return;
+    const salesWithId = entries.map(e => ({ ...e, restaurantId: currentRestaurant.id }));
+    await db.saveSales(salesWithId);
+    setSales(prev => [...salesWithId, ...prev]);
   };
 
   const handleDeleteSale = async (id: string) => {
     await db.deleteSale(id);
     setSales(prev => prev.filter(s => s.id !== id));
-    addToast("تم حذف سجل العملية");
   };
 
-  const handleUpdateSale = async (id: string, quantity: number) => {
-    await db.updateSale(id, quantity);
-    setSales(prev => prev.map(s => s.id === id ? { ...s, quantitySold: quantity } : s));
-    addToast("تم تعديل كمية المبيعات");
-  };
-
-  if (isLoading) {
+  if (isLoading && !currentRestaurant) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-800 space-y-4">
-        <ChefHat className="w-16 h-16 text-emerald-500 animate-bounce" />
-        <div className="flex items-center gap-2 text-xl font-bold">
-          <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
-          جاري التحميل...
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
+        <Loader2 className="w-12 h-12 text-emerald-500 animate-spin" />
+        <p className="mt-4 font-bold text-slate-600">جاري تهيئة النظام...</p>
+      </div>
+    );
+  }
+
+  // --- Restaurant Selection Screen ---
+  if (!currentRestaurant) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4" dir="rtl">
+        <div className="max-w-4xl w-full">
+          <div className="text-center mb-10">
+            <ChefHat className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
+            <h1 className="text-3xl font-bold text-slate-800">CulinaTrack</h1>
+            <p className="text-slate-500 mt-2">نظام إدارة استهلاك المواد الخام للمطاعم</p>
+          </div>
+
+          {!isManagerMode ? (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {restaurants.map(r => (
+                  <button
+                    key={r.id}
+                    onClick={() => setCurrentRestaurant(r)}
+                    className="bg-white p-8 rounded-3xl shadow-sm border-2 border-transparent hover:border-emerald-500 hover:shadow-xl hover:-translate-y-1 transition-all group text-right"
+                  >
+                    <div className="bg-emerald-50 w-12 h-12 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-emerald-500 transition-colors">
+                      <Store className="w-6 h-6 text-emerald-500 group-hover:text-white" />
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-800">{r.name}</h3>
+                    <p className="text-slate-400 text-sm mt-1 flex items-center gap-1">دخول للنظام <ArrowRight className="w-3 h-3" /></p>
+                  </button>
+                ))}
+                
+                {restaurants.length === 0 && (
+                  <div className="col-span-full py-20 text-center border-2 border-dashed rounded-3xl text-slate-400">
+                    لا يوجد مطاعم مسجلة حالياً
+                  </div>
+                )}
+              </div>
+              <button 
+                onClick={() => setIsManagerMode(true)}
+                className="w-full flex items-center justify-center gap-2 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-bold transition-colors"
+              >
+                <Settings className="w-5 h-5" /> لوحة تحكم المدير (إضافة مطاعم)
+              </button>
+            </div>
+          ) : (
+            <div className="bg-white p-8 rounded-3xl shadow-xl animate-in zoom-in duration-300">
+              <div className="flex items-center justify-between mb-8">
+                <h2 className="text-2xl font-bold text-slate-800">إدارة المطاعم</h2>
+                <button onClick={() => setIsManagerMode(false)} className="text-slate-400 hover:text-slate-600"><X /></button>
+              </div>
+
+              <div className="space-y-6">
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    placeholder="اسم المطعم الجديد" 
+                    className="flex-1 border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-500"
+                    value={newRestName}
+                    onChange={(e) => setNewRestName(e.target.value)}
+                  />
+                  <button 
+                    onClick={handleCreateRestaurant}
+                    className="bg-emerald-500 text-white px-6 py-3 rounded-xl font-bold hover:bg-emerald-600"
+                  >
+                    إضافة مطعم
+                  </button>
+                </div>
+
+                <div className="divide-y">
+                  {restaurants.map(r => (
+                    <div key={r.id} className="py-4 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Store className="w-5 h-5 text-slate-400" />
+                        <span className="font-bold text-slate-700">{r.name}</span>
+                      </div>
+                      <button 
+                        onClick={() => handleDeleteRestaurant(r.id)}
+                        className="p-2 text-rose-400 hover:bg-rose-50 hover:text-rose-600 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
+  // --- Main App Logic for Selected Restaurant ---
   const renderContent = () => {
     switch (activeTab) {
       case 'materials':
@@ -197,7 +299,7 @@ const App: React.FC = () => {
             onUpdate={handleUpdateMaterial} 
             onDelete={handleDeleteMaterial}
             onAddGroup={handleAddMaterialGroup}
-            onUpdateGroup={handleUpdateMaterialGroup}
+            onUpdateGroup={(g) => db.saveMaterialGroup({ ...g, restaurantId: currentRestaurant.id })}
             onDeleteGroup={handleDeleteMaterialGroup}
           />
         );
@@ -210,7 +312,7 @@ const App: React.FC = () => {
             onUpdate={handleUpdateItem} 
             onDelete={handleDeleteItem} 
             onAddGroup={handleAddSalesItemGroup}
-            onUpdateGroup={handleUpdateSalesItemGroup}
+            onUpdateGroup={(g) => db.saveSalesItemGroup({ ...g, restaurantId: currentRestaurant.id })}
             onDeleteGroup={handleDeleteSalesItemGroup}
           />
         );
@@ -230,7 +332,7 @@ const App: React.FC = () => {
             sales={sales} 
             onSave={handleSaveSales} 
             onDeleteSale={handleDeleteSale}
-            onUpdateSale={handleUpdateSale}
+            onUpdateSale={db.updateSale}
           />
         );
       case 'reports':
@@ -257,15 +359,20 @@ const App: React.FC = () => {
 
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-900 overflow-x-hidden" dir="rtl">
+      {/* Loading Overlay */}
+      {isLoading && currentRestaurant && (
+        <div className="fixed inset-0 bg-white/60 backdrop-blur-sm z-[200] flex items-center justify-center">
+          <Loader2 className="w-10 h-10 text-emerald-500 animate-spin" />
+        </div>
+      )}
+
       {/* Toast Container */}
-      <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-3 pointer-events-none">
+      <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[300] flex flex-col gap-3 pointer-events-none">
         {toasts.map(toast => (
           <div 
             key={toast.id} 
             className={`flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border pointer-events-auto animate-in slide-in-from-top-4 duration-300 ${
-              toast.type === 'success' 
-                ? 'bg-white border-emerald-100 text-emerald-900' 
-                : 'bg-rose-50 border-rose-100 text-rose-900'
+              toast.type === 'success' ? 'bg-white border-emerald-100 text-emerald-900' : 'bg-rose-50 border-rose-100 text-rose-900'
             }`}
           >
             {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <AlertCircle className="w-5 h-5 text-rose-500" />}
@@ -282,7 +389,10 @@ const App: React.FC = () => {
         setActiveTab={(tab: any) => setActiveTab(tab)} 
         isOpen={isSidebarOpen} 
         setIsOpen={setIsSidebarOpen} 
+        restaurantName={currentRestaurant.name}
+        onExit={() => setCurrentRestaurant(null)}
       />
+      
       <div className="flex-1 flex flex-col min-w-0">
         <Header 
           activeTab={activeTab} 

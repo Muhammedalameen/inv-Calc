@@ -1,15 +1,22 @@
 
+export interface Restaurant {
+  id: string;
+  name: string;
+  icon?: string;
+}
+
 export interface MaterialGroup {
   id: string;
   name: string;
+  restaurantId: string;
 }
 
 export interface SalesItemGroup {
   id: string;
   name: string;
+  restaurantId: string;
 }
 
-// Unit interface required by UnitsPage.tsx
 export interface Unit {
   id: string;
   name: string;
@@ -18,24 +25,28 @@ export interface Unit {
 export interface Material {
   id: string;
   name: string;
-  unit: string; // Now manually entered
+  unit: string;
   groupId?: string;
+  restaurantId: string;
 }
 
 export interface SalesItem {
   id: string;
   name: string;
   groupId?: string;
+  restaurantId: string;
 }
 
 export interface RecipeIngredient {
-  materialId: string;
-  quantity: number; // Quantity of material per 1 unit of sales item
+  materialId?: string; // Optional if using subItemId
+  subItemId?: string;   // Optional if using materialId
+  quantity: number;
 }
 
 export interface Recipe {
   itemId: string;
   ingredients: RecipeIngredient[];
+  restaurantId: string;
 }
 
 export interface SaleEntry {
@@ -43,6 +54,7 @@ export interface SaleEntry {
   itemId: string;
   quantitySold: number;
   date: string;
+  restaurantId: string;
 }
 
 export interface AggregatedReportItem {

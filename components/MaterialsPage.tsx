@@ -6,11 +6,12 @@ import { Material, MaterialGroup } from '../types';
 interface Props {
   materials: Material[];
   groups: MaterialGroup[];
-  onAdd: (m: Material) => Promise<void>;
-  onUpdate: (m: Material) => Promise<void>;
+  // Fix: Prop types now use Omit to acknowledge restaurantId is handled by parent
+  onAdd: (m: Omit<Material, 'restaurantId'>) => Promise<void>;
+  onUpdate: (m: Omit<Material, 'restaurantId'>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
-  onAddGroup: (g: MaterialGroup) => Promise<void>;
-  onUpdateGroup: (g: MaterialGroup) => Promise<void>;
+  onAddGroup: (g: Omit<MaterialGroup, 'restaurantId'>) => Promise<void>;
+  onUpdateGroup: (g: Omit<MaterialGroup, 'restaurantId'>) => Promise<void>;
   onDeleteGroup: (id: string) => Promise<void>;
 }
 
@@ -39,8 +40,9 @@ const MaterialsPage: React.FC<Props> = ({
     if (materials.some(m => m.name.trim().toLowerCase() === name.trim().toLowerCase())) 
       return setError('هذه الخامة موجودة بالفعل');
 
-    const newMaterial: Material = { 
-      id: crypto.randomUUID(), 
+    // Fix: Removed explicit : Material type because restaurantId is missing and added by parent
+    const newMaterial = { 
+      id: crypto.randomUUID() as `${string}-${string}-${string}-${string}-${string}`, 
       name: name.trim(), 
       unit: unit.trim(),
       groupId: selectedGroupId || undefined
@@ -52,6 +54,7 @@ const MaterialsPage: React.FC<Props> = ({
 
   const saveEdit = async (id: string) => {
     if (!editName.trim() || !editUnit.trim()) return;
+    // Fix: Object passed to onUpdate no longer causes error because Prop expects Omit<Material, 'restaurantId'>
     await onUpdate({ 
       id, 
       name: editName.trim(), 
@@ -64,7 +67,8 @@ const MaterialsPage: React.FC<Props> = ({
   const handleAddGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGroupName.trim()) return;
-    await onAddGroup({ id: crypto.randomUUID(), name: newGroupName.trim() });
+    // Fix: Passing partial object is now allowed by updated onAddGroup prop type
+    await onAddGroup({ id: crypto.randomUUID() as `${string}-${string}-${string}-${string}-${string}`, name: newGroupName.trim() });
     setNewGroupName('');
   };
 
