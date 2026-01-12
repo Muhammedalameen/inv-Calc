@@ -10,14 +10,19 @@ interface Props {
   onSave: (recipe: Omit<Recipe, 'restaurantId'>) => Promise<void>;
 }
 
+// Local interface to handle string inputs for decimals during editing
+interface LocalRecipeIngredient extends Omit<RecipeIngredient, 'quantity'> {
+  quantity: string | number;
+}
+
 const RecipeBuilderPage: React.FC<Props> = ({ items, materials, recipes, onSave }) => {
   const [selectedItemId, setSelectedItemId] = useState<string>('');
-  const [localIngredients, setLocalIngredients] = useState<RecipeIngredient[]>([]);
+  const [localIngredients, setLocalIngredients] = useState<LocalRecipeIngredient[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const existing = recipes.find(r => r.itemId === selectedItemId);
-    setLocalIngredients(existing ? [...existing.ingredients] : []);
+    setLocalIngredients(existing ? existing.ingredients.map(i => ({...i})) : []);
   }, [selectedItemId, recipes]);
 
   const addIngredient = (type: 'material' | 'item') => {
@@ -25,18 +30,19 @@ const RecipeBuilderPage: React.FC<Props> = ({ items, materials, recipes, onSave 
     
     if (type === 'material') {
       if (materials.length === 0) return;
-      setLocalIngredients([...localIngredients, { materialId: materials[0].id, quantity: 0 }]);
+      setLocalIngredients([...localIngredients, { materialId: materials[0].id, quantity: '' }]);
     } else {
       if (items.length === 0) return;
       // Filter out the selected item itself to prevent circular reference
       const otherItems = items.filter(i => i.id !== selectedItemId);
       if (otherItems.length === 0) return;
-      setLocalIngredients([...localIngredients, { subItemId: otherItems[0].id, quantity: 0 }]);
+      setLocalIngredients([...localIngredients, { subItemId: otherItems[0].id, quantity: '' }]);
     }
   };
 
-  const updateIngredient = (idx: number, field: keyof RecipeIngredient, value: any) => {
+  const updateIngredient = (idx: number, field: keyof LocalRecipeIngredient, value: any) => {
     const next = [...localIngredients];
+    // @ts-ignore - dynamic assignment
     next[idx] = { ...next[idx], [field]: value };
     
     // Ensure if we update materialId, subItemId is cleared and vice versa
@@ -65,7 +71,15 @@ const RecipeBuilderPage: React.FC<Props> = ({ items, materials, recipes, onSave 
   const handleSave = async () => {
     if (!selectedItemId) return;
     setIsSaving(true);
-    await onSave({ itemId: selectedItemId, ingredients: localIngredients });
+    
+    // Parse strings back to numbers for saving
+    const ingredientsToSave: RecipeIngredient[] = localIngredients.map(ing => ({
+      materialId: ing.materialId,
+      subItemId: ing.subItemId,
+      quantity: typeof ing.quantity === 'string' ? parseFloat(ing.quantity) || 0 : ing.quantity
+    }));
+
+    await onSave({ itemId: selectedItemId, ingredients: ingredientsToSave });
     setIsSaving(false);
   };
 
@@ -130,10 +144,11 @@ const RecipeBuilderPage: React.FC<Props> = ({ items, materials, recipes, onSave 
                     <div className="w-full md:w-48">
                       <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 mb-1 mr-1">الكمية لكل وحدة</label>
                       <input 
-                        type="number" step="0.001" 
+                        type="number" step="any"
                         className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-slate-800 dark:text-white font-mono font-bold transition-colors" 
-                        value={ing.quantity || ''} 
-                        onChange={(e) => updateIngredient(idx, 'quantity', parseFloat(e.target.value) || 0)} 
+                        value={ing.quantity} 
+                        onChange={(e) => updateIngredient(idx, 'quantity', e.target.value)} 
+                        placeholder="0.00"
                       />
                     </div>
                     <button onClick={() => removeIngredient(idx)} className="p-2.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl md:mt-5 self-end"><Trash2 className="w-5 h-5" /></button>
