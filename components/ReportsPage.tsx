@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
-import { Layers, List, FileSpreadsheet, Printer, ChefHat, Calendar, Filter, RotateCcw, Search, Package, Utensils } from 'lucide-react';
+import { Layers, List, FileSpreadsheet, Printer, ChefHat, Calendar, Filter, RotateCcw, Search, Package, Utensils, Info, HelpCircle } from 'lucide-react';
 import { Material, SalesItem, Recipe, SaleEntry, DetailedReportItem } from '../types';
 
 interface Props {
@@ -41,6 +41,21 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
     visited.delete(itemId);
     return memo;
   }, [recipes]);
+
+  // Helper to show the nesting path for a material in a given item (for tooltip)
+  const getItemRecipePath = (itemId: string) => {
+    const recipe = recipes.find(r => r.itemId === itemId);
+    if (!recipe) return [];
+    return recipe.ingredients.map(ing => {
+      if (ing.materialId) {
+        const mat = materials.find(m => m.id === ing.materialId);
+        return { name: mat?.name, unit: mat?.unit, qty: ing.quantity, isSub: false };
+      } else {
+        const sub = items.find(i => i.id === ing.subItemId);
+        return { name: sub?.name, unit: 'وحدة', qty: ing.quantity, isSub: true };
+      }
+    });
+  };
 
   // Filtered sales based on selected date range and selected item
   const filteredSales = useMemo(() => {
@@ -94,7 +109,6 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
             return {
               materialName: mat?.name || 'مجهول',
               unit: mat?.unit || '',
-              // Ensure qtyPerUnit and qtySold are treated as numbers
               consumedQuantity: Number(qtyPerUnit) * Number(qtySold)
             };
           });
@@ -253,24 +267,45 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
         </div>
       ) : (
         <div className="space-y-6">
-          {detailedData.map((item, idx) => (
-            <div key={idx} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden print:break-inside-avoid">
-              <div className="p-4 bg-slate-900 text-white flex justify-between items-center print:bg-slate-100 print:text-slate-900 print:border-b">
-                <span className="text-lg font-bold">{item.itemName}</span>
-                <span className="bg-emerald-500 px-3 py-1 rounded-lg text-sm font-bold">المباع: {item.quantitySold}</span>
+          {detailedData.map((item, idx) => {
+            const recipeId = items.find(i => i.name === item.itemName)?.id;
+            return (
+              <div key={idx} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden print:break-inside-avoid">
+                <div className="p-4 bg-slate-900 text-white flex justify-between items-center print:bg-slate-100 print:text-slate-900 print:border-b">
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg font-bold">{item.itemName}</span>
+                    {recipeId && (
+                       <div className="relative group cursor-help no-print">
+                         <HelpCircle className="w-4 h-4 text-slate-400 hover:text-emerald-400 transition-colors" />
+                         <div className="absolute z-50 top-full right-0 mt-2 hidden group-hover:block w-56 bg-white text-slate-800 p-3 rounded-xl shadow-2xl text-[10px] leading-relaxed border border-slate-200 animate-in fade-in slide-in-from-top-1">
+                           <p className="font-bold border-b border-slate-100 pb-1 mb-2 text-emerald-600">وصفة الصنف الأصلية:</p>
+                           <ul className="space-y-1">
+                              {getItemRecipePath(recipeId).map((ing, rIdx) => (
+                                <li key={rIdx} className="flex justify-between items-center border-b border-slate-50 pb-0.5 last:border-0">
+                                  <span>{ing.isSub ? '⚙️' : '📦'} {ing.name}</span>
+                                  <span className="font-mono">{ing.qty} {ing.unit}</span>
+                                </li>
+                              ))}
+                           </ul>
+                         </div>
+                       </div>
+                    )}
+                  </div>
+                  <span className="bg-emerald-500 px-3 py-1 rounded-lg text-sm font-bold">المباع: {item.quantitySold}</span>
+                </div>
+                <table className="w-full text-right">
+                  <tbody className="divide-y divide-slate-50">
+                    {item.ingredients.map((ing, iIdx) => (
+                      <tr key={iIdx}>
+                        <td className="px-6 py-3 text-sm text-slate-600">{ing.materialName}</td>
+                        <td className="px-6 py-3 text-sm font-mono font-bold text-slate-800 text-left">{ing.consumedQuantity.toLocaleString(undefined, { minimumFractionDigits: 3 })} {ing.unit}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <table className="w-full text-right">
-                <tbody className="divide-y divide-slate-50">
-                  {item.ingredients.map((ing, iIdx) => (
-                    <tr key={iIdx}>
-                      <td className="px-6 py-3 text-sm text-slate-600">{ing.materialName}</td>
-                      <td className="px-6 py-3 text-sm font-mono font-bold text-slate-800 text-left">{ing.consumedQuantity.toLocaleString(undefined, { minimumFractionDigits: 3 })} {ing.unit}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ))}
+            );
+          })}
           {detailedData.length === 0 && <div className="bg-white p-12 text-center text-slate-400 rounded-2xl border">لا توجد بيانات للعرض بناءً على التصفية</div>}
         </div>
       )}

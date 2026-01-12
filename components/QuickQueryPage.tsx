@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
-import { Calculator, Package, ArrowLeftRight, Search, UtensilsCrossed } from 'lucide-react';
+import { Calculator, Package, ArrowLeftRight, Search, UtensilsCrossed, Info, ChevronLeft } from 'lucide-react';
 import { SalesItem, Material, Recipe } from '../types';
 
 interface Props {
@@ -21,7 +21,7 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
     visited.add(itemId);
 
     recipe.ingredients.forEach(ing => {
-      const totalQty = ing.quantity * multiplier;
+      const totalQty = (ing.quantity || 0) * multiplier;
       if (ing.materialId) {
         memo[ing.materialId] = (memo[ing.materialId] || 0) + totalQty;
       } else if (ing.subItemId) {
@@ -32,6 +32,21 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
     visited.delete(itemId);
     return memo;
   }, [recipes]);
+
+  // Function to get the structure of a recipe for tooltip
+  const getRecipeStructure = (itemId: string) => {
+    const recipe = recipes.find(r => r.itemId === itemId);
+    if (!recipe) return null;
+    return recipe.ingredients.map(ing => {
+      if (ing.materialId) {
+        const mat = materials.find(m => m.id === ing.materialId);
+        return { name: mat?.name, qty: ing.quantity, unit: mat?.unit, type: 'material' };
+      } else {
+        const item = items.find(i => i.id === ing.subItemId);
+        return { name: item?.name, qty: ing.quantity, unit: 'وحدة', type: 'item' };
+      }
+    });
+  };
 
   const selectedItem = useMemo(() => items.find(i => i.id === selectedItemId), [items, selectedItemId]);
   const itemRecipe = useMemo(() => recipes.find(r => r.itemId === selectedItemId), [recipes, selectedItemId]);
@@ -45,6 +60,7 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
     return Object.entries(flattened).map(([matId, totalQty]) => {
       const mat = materials.find(m => m.id === matId);
       return {
+        materialId: matId,
         materialName: mat?.name || 'خامة غير معروفة',
         unit: mat?.unit || '',
         totalRequired: totalQty
@@ -93,9 +109,28 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
         itemRecipe ? (
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300 transition-colors">
             <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center">
-              <div>
-                <h4 className="font-bold text-slate-800 dark:text-white">الخامات النهائية المطلوبة لـ {queryQuantity} وحدة</h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400">شاملة لكافة الوصفات المتداخلة لـ {selectedItem?.name}</p>
+              <div className="flex items-center gap-3">
+                <div className="relative group cursor-help">
+                   <Info className="w-5 h-5 text-blue-400" />
+                   <div className="absolute z-50 bottom-full right-0 mb-2 hidden group-hover:block w-64 bg-slate-800 text-white p-3 rounded-xl shadow-2xl text-xs leading-relaxed border border-slate-700 animate-in fade-in zoom-in-95 duration-200">
+                     <p className="font-bold border-b border-slate-700 pb-1.5 mb-2 text-blue-300">وصفة {selectedItem?.name}:</p>
+                     <ul className="space-y-1">
+                        {getRecipeStructure(selectedItemId)?.map((ing, i) => (
+                          <li key={i} className="flex justify-between items-center gap-2">
+                            <span className="flex items-center gap-1">
+                              {ing.type === 'item' ? <UtensilsCrossed className="w-3 h-3 text-emerald-400" /> : <Package className="w-3 h-3 text-slate-400" />}
+                              {ing.name}
+                            </span>
+                            <span className="font-mono text-blue-200">{ing.qty} {ing.unit}</span>
+                          </li>
+                        ))}
+                     </ul>
+                   </div>
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-800 dark:text-white">الخامات النهائية المطلوبة لـ {queryQuantity} وحدة</h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">شاملة لكافة الوصفات المتداخلة لـ {selectedItem?.name}</p>
+                </div>
               </div>
               <div className="bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-lg text-xs font-bold text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800/50 flex items-center gap-1">
                 <UtensilsCrossed className="w-3.5 h-3.5" /> تحليل كامل
