@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
-import { Calculator, Package, ArrowLeftRight, Search, UtensilsCrossed, Info, ChevronLeft } from 'lucide-react';
+import { Calculator, Package, ArrowLeftRight, Search, UtensilsCrossed, Info } from 'lucide-react';
 import { SalesItem, Material, Recipe } from '../types';
 
 interface Props {
@@ -13,7 +13,6 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
   const [selectedItemId, setSelectedItemId] = useState<string>('');
   const [queryQuantity, setQueryQuantity] = useState<string | number>(1);
 
-  // Recursive function to resolve total material consumption
   const resolveFlattenedIngredients = useCallback((itemId: string, multiplier: number, memo: Record<string, number> = {}, visited: Set<string> = new Set()): Record<string, number> => {
     const recipe = recipes.find(r => r.itemId === itemId);
     if (!recipe || visited.has(itemId)) return memo;
@@ -33,7 +32,6 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
     return memo;
   }, [recipes]);
 
-  // Function to get the structure of a recipe for tooltip
   const getRecipeStructure = (itemId: string) => {
     const recipe = recipes.find(r => r.itemId === itemId);
     if (!recipe) return null;
@@ -53,7 +51,6 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
 
   const calculationResults = useMemo(() => {
     if (!selectedItemId) return [];
-    
     const qty = typeof queryQuantity === 'string' ? parseFloat(queryQuantity) || 0 : queryQuantity;
     const flattened = resolveFlattenedIngredients(selectedItemId, qty);
     
@@ -110,26 +107,32 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300 transition-colors">
             <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center">
               <div className="flex items-center gap-3">
-                <div className="relative group cursor-help">
-                   <Info className="w-5 h-5 text-blue-400" />
-                   <div className="absolute z-50 bottom-full right-0 mb-2 hidden group-hover:block w-64 bg-slate-800 text-white p-3 rounded-xl shadow-2xl text-xs leading-relaxed border border-slate-700 animate-in fade-in zoom-in-95 duration-200">
-                     <p className="font-bold border-b border-slate-700 pb-1.5 mb-2 text-blue-300">وصفة {selectedItem?.name}:</p>
-                     <ul className="space-y-1">
+                {/* TOOLTIP CONTAINER */}
+                <div className="relative group">
+                   <div className="cursor-help bg-blue-100 dark:bg-blue-900/30 p-1.5 rounded-full hover:bg-blue-200 transition-colors">
+                     <Info className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                   </div>
+                   <div className="invisible group-hover:visible absolute z-[100] bottom-full right-0 mb-3 w-72 bg-slate-800 text-white p-4 rounded-2xl shadow-2xl border border-slate-700 animate-in fade-in zoom-in-95 duration-200">
+                     <p className="font-bold border-b border-slate-700 pb-2 mb-2 text-blue-300 text-sm">مكونات {selectedItem?.name}:</p>
+                     <ul className="space-y-2 max-h-48 overflow-y-auto pr-1">
                         {getRecipeStructure(selectedItemId)?.map((ing, i) => (
-                          <li key={i} className="flex justify-between items-center gap-2">
-                            <span className="flex items-center gap-1">
-                              {ing.type === 'item' ? <UtensilsCrossed className="w-3 h-3 text-emerald-400" /> : <Package className="w-3 h-3 text-slate-400" />}
-                              {ing.name}
+                          <li key={i} className="flex justify-between items-center gap-2 text-[11px]">
+                            <span className="flex items-center gap-2 truncate">
+                              {ing.type === 'item' ? <UtensilsCrossed className="w-3 h-3 text-emerald-400 shrink-0" /> : <Package className="w-3 h-3 text-slate-400 shrink-0" />}
+                              <span className="truncate">{ing.name}</span>
                             </span>
-                            <span className="font-mono text-blue-200">{ing.qty} {ing.unit}</span>
+                            <span className="font-mono text-blue-200 whitespace-nowrap bg-slate-700/50 px-1.5 py-0.5 rounded">{ing.qty} {ing.unit}</span>
                           </li>
                         ))}
                      </ul>
+                     <div className="mt-2 pt-2 border-t border-slate-700 text-[9px] text-slate-400 italic">
+                       * تظهر الكميات لكل وحدة واحدة من الصنف
+                     </div>
                    </div>
                 </div>
                 <div>
-                  <h4 className="font-bold text-slate-800 dark:text-white">الخامات النهائية المطلوبة لـ {queryQuantity} وحدة</h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">شاملة لكافة الوصفات المتداخلة لـ {selectedItem?.name}</p>
+                  <h4 className="font-bold text-slate-800 dark:text-white">الخامات النهائية لـ {queryQuantity} وحدة</h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">تحليل المكونات المجهزة لـ {selectedItem?.name}</p>
                 </div>
               </div>
               <div className="bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-lg text-xs font-bold text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800/50 flex items-center gap-1">
@@ -168,7 +171,7 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
 
             <div className="p-4 bg-blue-50/30 dark:bg-blue-900/10 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 font-medium">
               <ArrowLeftRight className="w-3.5 h-3.5" />
-              <span>تم تحليل الوصفة وتفكيك كافة الأصناف المجهزة إلى خاماتها الأصلية.</span>
+              <span>تم تفكيك كافة الوصفات المجهزة إلى خاماتها الأولية بنجاح.</span>
             </div>
           </div>
         ) : (
@@ -176,14 +179,14 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
             <UtensilsCrossed className="w-12 h-12 text-rose-500" />
             <div className="text-center">
               <h4 className="font-bold text-rose-800 dark:text-rose-400">وصفة غير مكتملة</h4>
-              <p className="text-sm text-rose-600 dark:text-rose-500 mt-1">يجب عليك إعداد وصفة للصنف "{selectedItem?.name}" في صفحة إدارة الوصفات.</p>
+              <p className="text-sm text-rose-600 dark:text-rose-500 mt-1">يجب عليك إعداد وصفة للصنف "{selectedItem?.name}" أولاً.</p>
             </div>
           </div>
         )
       ) : (
         <div className="bg-slate-100/50 dark:bg-slate-800/30 border-2 border-dashed border-slate-200 dark:border-slate-800 p-20 rounded-2xl flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 gap-4">
           <Search className="w-16 h-16 opacity-10" />
-          <p className="font-medium">اختر صنفاً مجهزاً أو وجبة رئيسية لبدء التحليل</p>
+          <p className="font-medium">اختر صنفاً من القائمة لبدء حساب الاستهلاك التقديري</p>
         </div>
       )}
     </div>
