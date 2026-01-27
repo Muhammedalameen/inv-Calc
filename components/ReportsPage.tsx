@@ -1,6 +1,6 @@
 
-import React, { useState, useMemo, useCallback } from 'react';
-import { Layers, List, FileSpreadsheet, Printer, ChefHat, Calendar, Filter, RotateCcw, Search, Package, Utensils, Info, HelpCircle, ChevronLeft } from 'lucide-react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { Layers, List, FileSpreadsheet, Printer, ChefHat, Calendar, Filter, RotateCcw, Search, Package, Utensils, Info, HelpCircle, ChevronDown, CheckSquare, Square, Hash, X } from 'lucide-react';
 import { Material, SalesItem, Recipe, SaleEntry, DetailedReportItem } from '../types';
 
 interface Props {
@@ -21,6 +21,22 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
   
   const [selectedMaterialId, setSelectedMaterialId] = useState<string>('');
   const [selectedItemId, setSelectedItemId] = useState<string>('');
+
+  // --- Invoice Reference Filtering State ---
+  const [selectedRefNumbers, setSelectedRefNumbers] = useState<string[]>([]);
+  const [isRefDropdownOpen, setIsRefDropdownOpen] = useState(false);
+  const refDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (refDropdownRef.current && !refDropdownRef.current.contains(event.target as Node)) {
+        setIsRefDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Recursive function to flatten consumption from nested recipes
   const getFlattenedConsumption = useCallback((itemId: string, multiplier: number, memo: Record<string, number> = {}, visited: Set<string> = new Set()): Record<string, number> => {
@@ -51,14 +67,44 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
     }));
   };
 
+  // Get Unique Invoice References from all sales (Sorted Newest First)
+  const uniqueReferences = useMemo(() => {
+    const refsMap = new Map<string, string>(); // Ref -> Date
+    sales.forEach(s => {
+      if (s.referenceNumber && !refsMap.has(s.referenceNumber)) {
+        refsMap.set(s.referenceNumber, s.date);
+      }
+    });
+    // Convert to array and sort by date descending
+    return Array.from(refsMap.entries())
+      .map(([ref, date]) => ({ ref, date }))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [sales]);
+
+  const toggleRefSelection = (ref: string) => {
+    setSelectedRefNumbers(prev => 
+      prev.includes(ref) ? prev.filter(r => r !== ref) : [...prev, ref]
+    );
+  };
+
+  // Main Filter Logic
   const filteredSales = useMemo(() => {
     return sales.filter(sale => {
+      const itemMatch = selectedItemId ? sale.itemId === selectedItemId : true;
+
+      // Priority Logic: If specific invoices are selected, prioritize them over date range.
+      // If no invoices selected, fallback to date range.
+      if (selectedRefNumbers.length > 0) {
+        const refMatch = sale.referenceNumber && selectedRefNumbers.includes(sale.referenceNumber);
+        return refMatch && itemMatch;
+      }
+
+      // Default Date Range Logic
       const saleDate = sale.date;
       const dateMatch = saleDate >= startDate && saleDate <= endDate;
-      const itemMatch = selectedItemId ? sale.itemId === selectedItemId : true;
       return dateMatch && itemMatch;
     });
-  }, [sales, startDate, endDate, selectedItemId]);
+  }, [sales, startDate, endDate, selectedItemId, selectedRefNumbers]);
 
   const aggregatedData = useMemo(() => {
     const consumptionMap: Record<string, number> = {};
@@ -115,11 +161,17 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
     setEndDate(today);
     setSelectedMaterialId('');
     setSelectedItemId('');
+    setSelectedRefNumbers([]);
   };
 
   const exportCSV = () => {
     const BOM = "\uFEFF";
-    let csvContent = `نظام CulinaTrack - تقرير استهلاك\nالفترة,${startDate} إلى ${endDate}\n\n`;
+    let periodText = selectedRefNumbers.length > 0 
+      ? `فواتير محددة (${selectedRefNumbers.length})` 
+      : `${startDate} إلى ${endDate}`;
+
+    let csvContent = `نظام CulinaTrack - تقرير استهلاك\nالفترة,${periodText}\n\n`;
+    
     if (reportType === 'aggregated') {
       csvContent += "الخامة,الوحدة,الإجمالي\n";
       aggregatedData.forEach(r => csvContent += `"${r.name}","${r.unit}",${r.total.toFixed(3)}\n`);
@@ -142,7 +194,12 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
           <div className="bg-emerald-500 p-2 rounded-lg"><ChefHat className="w-8 h-8 text-white" /></div>
           <div><h1 className="text-2xl font-bold">CulinaTrack</h1><p className="text-xs">نظام إدارة استهلاك المطاعم</p></div>
         </div>
-        <div className="text-right"><h2 className="text-xl font-bold">تقرير استهلاك الخامات</h2><p className="text-sm">الفترة: {startDate} إلى {endDate}</p></div>
+        <div className="text-right">
+          <h2 className="text-xl font-bold">تقرير استهلاك الخامات</h2>
+          <p className="text-sm">
+            {selectedRefNumbers.length > 0 ? `فواتير محددة: ${selectedRefNumbers.length}` : `الفترة: ${startDate} إلى ${endDate}`}
+          </p>
+        </div>
       </div>
 
       {/* Filter UI */}
@@ -150,29 +207,116 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
         <div className="flex items-center gap-2 mb-6 text-slate-700 dark:text-slate-300 font-bold border-b border-slate-100 dark:border-slate-800 pb-4">
           <Filter className="w-5 h-5 text-emerald-500" /><h3>تصفية التقارير الذكية</h3>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+          
+          {/* Reference Number Multi-Select */}
+          <div className="space-y-1.5 relative" ref={refDropdownRef}>
+            <label className="text-xs font-bold text-slate-500 mr-1 flex items-center gap-1"><Hash className="w-3 h-3"/> أرقام الفواتير</label>
+            <button 
+              onClick={() => setIsRefDropdownOpen(!isRefDropdownOpen)}
+              className={`w-full flex items-center justify-between border dark:border-slate-700 rounded-xl px-3 py-2 text-sm transition-all outline-none focus:ring-2 focus:ring-emerald-500 ${
+                selectedRefNumbers.length > 0 
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400' 
+                  : 'bg-white dark:bg-slate-800 dark:text-white'
+              }`}
+            >
+              <span className="truncate">
+                {selectedRefNumbers.length > 0 ? `${selectedRefNumbers.length} فاتورة محددة` : 'كل الفواتير (حسب التاريخ)'}
+              </span>
+              <ChevronDown className="w-4 h-4 opacity-50" />
+            </button>
+            
+            {/* Dropdown List */}
+            {isRefDropdownOpen && (
+              <div className="absolute top-full right-0 w-full mt-2 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 max-h-60 overflow-y-auto">
+                 {uniqueReferences.length > 0 ? (
+                   <div className="p-2 space-y-1">
+                      {uniqueReferences.map((item) => {
+                        const isSelected = selectedRefNumbers.includes(item.ref);
+                        return (
+                          <div 
+                            key={item.ref} 
+                            onClick={() => toggleRefSelection(item.ref)}
+                            className={`flex items-start gap-3 p-2 rounded-lg cursor-pointer transition-colors ${
+                              isSelected ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-700'
+                            }`}
+                          >
+                            <div className={`mt-1 ${isSelected ? 'text-emerald-500' : 'text-slate-300'}`}>
+                              {isSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                            </div>
+                            <div className="flex flex-col">
+                              <span className={`text-sm font-bold font-mono ${isSelected ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                                {item.ref}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-medium">
+                                {item.date}
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                   </div>
+                 ) : (
+                   <div className="p-4 text-center text-xs text-slate-400">لا توجد فواتير مسجلة</div>
+                 )}
+              </div>
+            )}
+          </div>
+
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-500 mr-1 flex items-center gap-1"><Calendar className="w-3 h-3"/> من تاريخ</label>
-            <input type="date" className="w-full border dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white rounded-xl px-3 py-2 text-sm" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <input 
+              type="date" 
+              disabled={selectedRefNumbers.length > 0}
+              className="w-full border dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white rounded-xl px-3 py-2 text-sm disabled:opacity-50 disabled:bg-slate-100 disabled:cursor-not-allowed" 
+              value={startDate} onChange={(e) => setStartDate(e.target.value)} 
+            />
           </div>
+          
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-500 mr-1 flex items-center gap-1"><Calendar className="w-3 h-3"/> إلى تاريخ</label>
-            <input type="date" className="w-full border dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white rounded-xl px-3 py-2 text-sm" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            <input 
+              type="date" 
+              disabled={selectedRefNumbers.length > 0}
+              className="w-full border dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white rounded-xl px-3 py-2 text-sm disabled:opacity-50 disabled:bg-slate-100 disabled:cursor-not-allowed" 
+              value={endDate} onChange={(e) => setEndDate(e.target.value)} 
+            />
           </div>
+          
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-500 mr-1 flex items-center gap-1"><Package className="w-3 h-3"/> الخامة</label>
             <select className="w-full border dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white rounded-xl px-3 py-2 text-sm" value={selectedMaterialId} onChange={(e) => setSelectedMaterialId(e.target.value)}>
               <option value="">كل الخامات</option>{materials.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
-          <div className="space-y-1.5">
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mt-4">
+           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-500 mr-1 flex items-center gap-1"><Utensils className="w-3 h-3"/> الصنف</label>
             <select className="w-full border dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white rounded-xl px-3 py-2 text-sm" value={selectedItemId} onChange={(e) => setSelectedItemId(e.target.value)}>
               <option value="">كل الأصناف</option>{items.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
             </select>
           </div>
+           <div className="lg:col-span-3 flex justify-end items-end h-full">
+              <button onClick={resetFilter} className="flex items-center gap-2 px-4 py-2 text-slate-400 hover:text-rose-500 transition-all font-bold text-sm bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-rose-50 border border-transparent hover:border-rose-100"><RotateCcw className="w-4 h-4" />إعادة التصفية</button>
+           </div>
         </div>
-        <div className="mt-6 flex justify-end"><button onClick={resetFilter} className="flex items-center gap-2 px-4 py-2 text-slate-400 hover:text-rose-500 transition-all font-bold text-sm"><RotateCcw className="w-4 h-4" />إعادة التصفية</button></div>
+        
+        {/* Selected References Tags */}
+        {selectedRefNumbers.length > 0 && (
+           <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-2 animate-in fade-in slide-in-from-top-1">
+              <span className="text-xs font-bold text-slate-400 py-1">الفواتير المحددة:</span>
+              {selectedRefNumbers.map(ref => (
+                <span key={ref} className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300 text-xs px-2 py-1 rounded-md font-mono flex items-center gap-1">
+                   {ref}
+                   <button onClick={() => toggleRefSelection(ref)} className="hover:text-emerald-600"><X className="w-3 h-3" /></button>
+                </span>
+              ))}
+              <button onClick={() => setSelectedRefNumbers([])} className="text-[10px] text-rose-500 hover:underline px-2">مسح الكل</button>
+           </div>
+        )}
       </div>
 
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 no-print">
@@ -200,6 +344,9 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
                   <td className="px-6 py-4 font-mono font-bold text-emerald-600 dark:text-emerald-400 text-left">{data.total.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
                 </tr>
               ))}
+              {aggregatedData.length === 0 && (
+                 <tr><td colSpan={3} className="px-6 py-8 text-center text-slate-400">لا توجد بيانات للعرض حسب الفلترة المحددة</td></tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -264,6 +411,9 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
               </div>
             );
           })}
+          {detailedData.length === 0 && (
+             <div className="px-6 py-12 text-center text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl">لا توجد بيانات للعرض حسب الفلترة المحددة</div>
+          )}
         </div>
       )}
     </div>
