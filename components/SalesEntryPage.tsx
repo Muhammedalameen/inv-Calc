@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useCallback } from 'react';
-import { Save, History, ShoppingCart, Loader2, Trash2, Edit3, X, Check, Plus, Calendar, Filter, Search, Printer, FileText, Hash, Eye, Clock, ChevronDown, ChevronUp, ChevronLeft, FileSpreadsheet } from 'lucide-react';
+import { Save, History, ShoppingCart, Loader2, Trash2, Edit3, X, Check, Plus, Calendar, Filter, Search, Printer, FileText, Hash, Clock, ChevronDown, FileSpreadsheet, Layers, List, ChefHat } from 'lucide-react';
 import { SalesItem, SaleEntry, Material, Recipe } from '../types';
 
 interface Props {
@@ -19,12 +19,26 @@ interface NewSaleRow {
   quantity: number;
 }
 
+interface DetailedConsumptionItem {
+  itemName: string;
+  quantitySold: number;
+  ingredients: { name: string; unit: string; total: number }[];
+}
+
 interface PrintState {
   ref: string;
   date: string;
-  type: 'invoice' | 'consumption';
-  items?: SaleEntry[]; // For Invoice
-  reportItems?: { name: string; unit: string; total: number }[]; // For Consumption Report
+  type: 'invoice' | 'consumption-aggregated' | 'consumption-detailed';
+  invoiceItems?: SaleEntry[]; // For Invoice
+  aggregatedReport?: { name: string; unit: string; total: number }[]; // For Aggregated Consumption
+  detailedReport?: DetailedConsumptionItem[]; // For Detailed Consumption
+}
+
+interface ConsumptionModalState {
+  isOpen: boolean;
+  refNumber: string;
+  date: string;
+  batchItems: SaleEntry[];
 }
 
 const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onSave, onDeleteSale, onUpdateSale }) => {
@@ -43,11 +57,12 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
   const [editQuantity, setEditQuantity] = useState<number>(0);
   const [expandedRefs, setExpandedRefs] = useState<string[]>([]);
 
-  // Printing State
+  // Printing & Modal State
   const [printData, setPrintData] = useState<PrintState | null>(null);
+  const [consumptionModal, setConsumptionModal] = useState<ConsumptionModalState | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
 
-  // --- Recursive Consumption Logic (Shared with ReportsPage) ---
+  // --- Recursive Consumption Logic ---
   const getFlattenedConsumption = useCallback((itemId: string, multiplier: number, memo: Record<string, number> = {}, visited: Set<string> = new Set()): Record<string, number> => {
     const recipe = recipes.find(r => r.itemId === itemId);
     if (!recipe || visited.has(itemId)) return memo;
@@ -65,65 +80,111 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
     return memo;
   }, [recipes]);
 
-  // --- Export Logic ---
-  const handleExportBatchReport = (refNumber: string, date: string, batchItems: SaleEntry[]) => {
+  // --- Printing Handlers ---
+
+  // 1. Prepare Data for Aggregated Report
+  const prepareAggregatedReport = (batchItems: SaleEntry[]) => {
     const consumptionMap: Record<string, number> = {};
     batchItems.forEach(sale => {
       getFlattenedConsumption(sale.itemId, sale.quantitySold, consumptionMap);
     });
-
-    const reportData = materials.map(m => ({
+    return materials.map(m => ({
       name: m.name,
       unit: m.unit,
       total: consumptionMap[m.id] || 0
     })).filter(r => r.total > 0);
+  };
 
-    if (reportData.length === 0) {
-      alert("لا يوجد استهلاك خامات مسجل لهذه الفاتورة (تأكد من وجود وصفات للأصناف المباعة).");
+  // 2. Prepare Data for Detailed Report
+  const prepareDetailedReport = (batchItems: SaleEntry[]) => {
+    const result: DetailedConsumptionItem[] = [];
+    
+    // Group batch items by Item ID first (in case the same item appears multiple times in a batch, though unlikely in this UI)
+    const consolidatedItems: Record<string, number> = {};
+    batchItems.forEach(item => {
+      consolidatedItems[item.itemId] = (consolidatedItems[item.itemId] || 0) + item.quantitySold;
+    });
+
+    Object.entries(consolidatedItems).forEach(([itemId, totalQty]) => {
+      const saleItem = items.find(i => i.id === itemId);
+      if (!saleItem) return;
+
+      const consumptionMap: Record<string, number> = {};
+      // Calculate consumption for ONE unit, then we'll display total for sold qty
+      getFlattenedConsumption(itemId, totalQty, consumptionMap);
+
+      const ingredients = materials.map(m => ({
+        name: m.name,
+        unit: m.unit,
+        total: consumptionMap[m.id] || 0
+      })).filter(r => r.total > 0);
+
+      if (ingredients.length > 0) {
+        result.push({
+          itemName: saleItem.name,
+          quantitySold: totalQty,
+          ingredients
+        });
+      }
+    });
+    return result;
+  };
+
+  // 3. Trigger Print
+  const handlePrint = (type: PrintState['type']) => {
+    if (!consumptionModal && type !== 'invoice') return;
+    
+    // Invoice Printing (Direct)
+    if (type === 'invoice') {
+       // logic handled by direct call in button usually, but included for completeness
+       return;
+    }
+
+    const { refNumber, date, batchItems } = consumptionModal!;
+
+    if (type === 'consumption-aggregated') {
+      const data = prepareAggregatedReport(batchItems);
+      if (data.length === 0) return alert("لا يوجد استهلاك مسجل (تأكد من الوصفات).");
+      setPrintData({ ref: refNumber, date, type, aggregatedReport: data });
+    } else if (type === 'consumption-detailed') {
+      const data = prepareDetailedReport(batchItems);
+      if (data.length === 0) return alert("لا يوجد استهلاك مسجل (تأكد من الوصفات).");
+      setPrintData({ ref: refNumber, date, type, detailedReport: data });
+    }
+
+    setConsumptionModal(null); // Close modal
+    setTimeout(() => window.print(), 100);
+  };
+
+  const handleOpenConsumptionModal = (refNumber: string, date: string, batchItems: SaleEntry[]) => {
+    setConsumptionModal({ isOpen: true, refNumber, date, batchItems });
+  };
+
+  const handlePrintBatchInvoice = (refNumber: string, date: string, batchItems: SaleEntry[]) => {
+    setPrintData({ ref: refNumber, date, type: 'invoice', invoiceItems: batchItems });
+    setTimeout(() => {
+      window.print();
+    }, 100);
+  };
+
+  // --- Export Logic ---
+  const handleExportBatchReport = (refNumber: string, date: string, batchItems: SaleEntry[]) => {
+    const data = prepareAggregatedReport(batchItems);
+    if (data.length === 0) {
+      alert("لا يوجد استهلاك خامات مسجل لهذه الفاتورة.");
       return;
     }
 
     const BOM = "\uFEFF";
     let csvContent = `تقرير استهلاك فاتورة رقم: ${refNumber}\nالتاريخ: ${date}\n\n`;
     csvContent += "الخامة,الوحدة,إجمالي الكمية المستهلكة\n";
-    reportData.forEach(r => csvContent += `"${r.name}","${r.unit}",${r.total.toFixed(3)}\n`);
+    data.forEach(r => csvContent += `"${r.name}","${r.unit}",${r.total.toFixed(3)}\n`);
 
     const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = `Consumption_Invoice_${refNumber}.csv`;
     link.click();
-  };
-
-  // --- Printing Logic ---
-  const handlePrintBatchInvoice = (refNumber: string, date: string, batchItems: SaleEntry[]) => {
-    setPrintData({ ref: refNumber, date, type: 'invoice', items: batchItems });
-    setTimeout(() => {
-      window.print();
-    }, 100);
-  };
-
-  const handlePrintBatchConsumption = (refNumber: string, date: string, batchItems: SaleEntry[]) => {
-    const consumptionMap: Record<string, number> = {};
-    batchItems.forEach(sale => {
-      getFlattenedConsumption(sale.itemId, sale.quantitySold, consumptionMap);
-    });
-
-    const reportItems = materials.map(m => ({
-      name: m.name,
-      unit: m.unit,
-      total: consumptionMap[m.id] || 0
-    })).filter(r => r.total > 0);
-
-    if (reportItems.length === 0) {
-      alert("لا يوجد استهلاك خامات مسجل لهذه الفاتورة.");
-      return;
-    }
-
-    setPrintData({ ref: refNumber, date, type: 'consumption', reportItems });
-    setTimeout(() => {
-      window.print();
-    }, 100);
   };
 
   // --- Entry Logic ---
@@ -239,37 +300,97 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       
-      {/* Hidden Print Area */}
+      {/* --- Selection Modal --- */}
+      {consumptionModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 print:hidden">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <div className="p-6 text-center border-b border-slate-100 dark:border-slate-800">
+              <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                 <Printer className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-1">طباعة تقرير استهلاك</h3>
+              <p className="text-sm text-slate-500">اختر نوع التقرير المطلوب للفاتورة {consumptionModal.refNumber}</p>
+            </div>
+            
+            <div className="p-6 space-y-3">
+              <button 
+                onClick={() => handlePrint('consumption-aggregated')}
+                className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-slate-100 hover:border-emerald-500 hover:bg-emerald-50 dark:border-slate-800 dark:hover:border-emerald-500 dark:hover:bg-emerald-900/10 transition-all group text-right"
+              >
+                <div className="bg-white dark:bg-slate-800 p-3 rounded-xl shadow-sm group-hover:shadow-md transition-shadow">
+                  <Layers className="w-6 h-6 text-slate-400 group-hover:text-emerald-500" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-800 dark:text-white group-hover:text-emerald-700 dark:group-hover:text-emerald-400">تقرير تجميعي (ملخص)</h4>
+                  <p className="text-xs text-slate-500 mt-1">يعرض إجمالي كميات الخامات المستهلكة في الفاتورة بالكامل.</p>
+                </div>
+              </button>
+
+              <button 
+                onClick={() => handlePrint('consumption-detailed')}
+                className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-slate-100 hover:border-blue-500 hover:bg-blue-50 dark:border-slate-800 dark:hover:border-blue-500 dark:hover:bg-blue-900/10 transition-all group text-right"
+              >
+                <div className="bg-white dark:bg-slate-800 p-3 rounded-xl shadow-sm group-hover:shadow-md transition-shadow">
+                  <List className="w-6 h-6 text-slate-400 group-hover:text-blue-500" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-800 dark:text-white group-hover:text-blue-700 dark:group-hover:text-blue-400">تقرير تفصيلي (تحليلي)</h4>
+                  <p className="text-xs text-slate-500 mt-1">يعرض كل صنف مباع على حدة مع تفصيل الخامات المستهلكة له.</p>
+                </div>
+              </button>
+            </div>
+
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800">
+               <button onClick={() => setConsumptionModal(null)} className="w-full py-3 font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">إلغاء الأمر</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- Hidden Print Templates --- */}
       <div className="hidden print:block fixed inset-0 bg-white z-[9999] p-8" ref={printRef}>
         {printData && (
-          <div className="max-w-xl mx-auto border border-black p-8">
-             <div className="text-center mb-6 border-b-2 border-black pb-4">
-               <h1 className="text-2xl font-bold mb-2">
-                 {printData.type === 'invoice' ? 'فاتورة مبيعات' : 'تقرير استهلاك خامات'}
-               </h1>
-               <div className="flex justify-between text-sm mt-4 font-bold">
-                 <span>رقم المرجع: {printData.ref}</span>
-                 <span>التاريخ: {printData.date}</span>
+          <div className="max-w-2xl mx-auto">
+             {/* Print Header */}
+             <div className="flex items-center justify-between border-b-2 border-black pb-6 mb-8">
+               <div className="flex items-center gap-4">
+                  <div className="border-2 border-black p-2 rounded-lg"><ChefHat className="w-8 h-8" /></div>
+                  <div>
+                    <h1 className="text-3xl font-bold">CulinaTrack</h1>
+                    <p className="text-sm font-bold text-gray-600">نظام إدارة المطاعم</p>
+                  </div>
+               </div>
+               <div className="text-left">
+                  <h2 className="text-xl font-bold uppercase tracking-wide">
+                    {printData.type === 'invoice' && 'فاتورة مبيعات'}
+                    {printData.type === 'consumption-aggregated' && 'تقرير استهلاك (تجميعي)'}
+                    {printData.type === 'consumption-detailed' && 'تقرير استهلاك (تفصيلي)'}
+                  </h2>
+                  <div className="flex flex-col text-sm font-bold mt-2">
+                    <span>رقم المرجع: <span className="font-mono text-lg">{printData.ref}</span></span>
+                    <span>التاريخ: {printData.date}</span>
+                  </div>
                </div>
              </div>
              
-             {printData.type === 'invoice' && printData.items && (
-               <table className="w-full text-right text-sm border-collapse">
-                  <thead>
-                    <tr className="border-b border-black">
-                      <th className="py-2">الصنف</th>
-                      <th className="py-2 text-center">الكمية</th>
-                      <th className="py-2 text-left">الوحدة</th>
+             {/* 1. Invoice Template */}
+             {printData.type === 'invoice' && printData.invoiceItems && (
+               <table className="w-full text-right text-sm border-collapse border border-black">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="py-3 px-4 border-b border-black border-l">الصنف</th>
+                      <th className="py-3 px-4 text-center border-b border-black border-l">الكمية</th>
+                      <th className="py-3 px-4 text-left border-b border-black">الوحدة</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {printData.items.map(item => {
+                    {printData.invoiceItems.map((item, idx) => {
                       const i = items.find(x => x.id === item.itemId);
                       return (
-                        <tr key={item.id} className="border-b border-gray-300">
-                          <td className="py-2 font-bold">{i?.name}</td>
-                          <td className="py-2 text-center font-mono">{item.quantitySold}</td>
-                          <td className="py-2 text-left">{i?.unit}</td>
+                        <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          <td className="py-3 px-4 font-bold border-l border-gray-300">{i?.name}</td>
+                          <td className="py-3 px-4 text-center font-mono text-lg border-l border-gray-300">{item.quantitySold}</td>
+                          <td className="py-3 px-4 text-left">{i?.unit}</td>
                         </tr>
                       )
                     })}
@@ -277,29 +398,63 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
                </table>
              )}
 
-             {printData.type === 'consumption' && printData.reportItems && (
-               <table className="w-full text-right text-sm border-collapse">
-                  <thead>
-                    <tr className="border-b border-black">
-                      <th className="py-2">الخامة الأساسية</th>
-                      <th className="py-2 text-center">الكمية المستهلكة</th>
-                      <th className="py-2 text-left">الوحدة</th>
+             {/* 2. Aggregated Consumption Template */}
+             {printData.type === 'consumption-aggregated' && printData.aggregatedReport && (
+               <table className="w-full text-right text-sm border-collapse border border-black">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="py-3 px-4 border-b border-black border-l">الخامة الأساسية</th>
+                      <th className="py-3 px-4 text-center border-b border-black border-l">إجمالي الكمية المستهلكة</th>
+                      <th className="py-3 px-4 text-left border-b border-black">الوحدة</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {printData.reportItems.map((item, idx) => (
-                      <tr key={idx} className="border-b border-gray-300">
-                        <td className="py-2 font-bold">{item.name}</td>
-                        <td className="py-2 text-center font-mono">{item.total.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
-                        <td className="py-2 text-left">{item.unit}</td>
+                    {printData.aggregatedReport.map((item, idx) => (
+                      <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                        <td className="py-3 px-4 font-bold border-l border-gray-300">{item.name}</td>
+                        <td className="py-3 px-4 text-center font-mono text-lg font-bold border-l border-gray-300">{item.total.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                        <td className="py-3 px-4 text-left">{item.unit}</td>
                       </tr>
                     ))}
                   </tbody>
                </table>
              )}
 
-             <div className="mt-8 pt-4 border-t border-black text-center text-xs">
-                تمت الطباعة بواسطة نظام CulinaTrack
+             {/* 3. Detailed Consumption Template */}
+             {printData.type === 'consumption-detailed' && printData.detailedReport && (
+               <div className="space-y-6">
+                 {printData.detailedReport.map((item, idx) => (
+                   <div key={idx} className="border border-black break-inside-avoid">
+                      <div className="bg-gray-100 px-4 py-2 border-b border-black flex justify-between items-center">
+                        <span className="font-bold text-lg">{item.itemName}</span>
+                        <span className="font-mono font-bold bg-black text-white px-3 py-0.5 text-sm rounded-full">العدد: {item.quantitySold}</span>
+                      </div>
+                      <table className="w-full text-right text-sm">
+                        <thead className="text-xs text-gray-500 uppercase border-b border-gray-300">
+                          <tr>
+                            <th className="px-4 py-1.5 w-2/3">الخامة المستهلكة</th>
+                            <th className="px-4 py-1.5 text-center">الكمية</th>
+                            <th className="px-4 py-1.5 text-left">الوحدة</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {item.ingredients.map((ing, iIdx) => (
+                            <tr key={iIdx}>
+                              <td className="px-4 py-1.5 font-medium">{ing.name}</td>
+                              <td className="px-4 py-1.5 text-center font-mono">{ing.total.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                              <td className="px-4 py-1.5 text-left text-xs">{ing.unit}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                   </div>
+                 ))}
+               </div>
+             )}
+
+             <div className="mt-12 pt-4 border-t-2 border-black text-center text-xs flex justify-between font-bold">
+                <span>تم طباعة التقرير بواسطة نظام CulinaTrack</span>
+                <span>توقيت الطباعة: {new Date().toLocaleTimeString('ar-EG')}</span>
              </div>
           </div>
         )}
@@ -497,7 +652,7 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
                                     <FileSpreadsheet className="w-5 h-5" />
                                  </button>
                                  <button 
-                                   onClick={(e) => { e.stopPropagation(); handlePrintBatchConsumption(ref, dayGroup.date, batchItems); }}
+                                   onClick={(e) => { e.stopPropagation(); handleOpenConsumptionModal(ref, dayGroup.date, batchItems); }}
                                    className="p-2.5 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-900/20 rounded-xl transition-colors border border-transparent hover:border-emerald-200"
                                    title="طباعة تقرير استهلاك"
                                  >
