@@ -61,7 +61,7 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
       .filter(ing => !!ing.subItemId)
       .map(ing => {
         const item = items.find(i => i.id === ing.subItemId);
-        return { name: item?.name, qty: ing.quantity * qty, unit: 'وحدة' };
+        return { name: item?.name, qty: ing.quantity * qty, unit: item?.unit || 'وحدة' };
       });
   }, [selectedItemId, queryQuantity, items]);
 

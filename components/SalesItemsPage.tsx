@@ -6,7 +6,6 @@ import { SalesItem, SalesItemGroup } from '../types';
 interface Props {
   items: SalesItem[];
   groups: SalesItemGroup[];
-  // Fix: Prop types now use Omit to acknowledge restaurantId is handled by parent
   onAdd: (i: Omit<SalesItem, 'restaurantId'>) => Promise<void>;
   onUpdate: (i: Omit<SalesItem, 'restaurantId'>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -20,11 +19,13 @@ const SalesItemsPage: React.FC<Props> = ({
   onAddGroup, onUpdateGroup, onDeleteGroup 
 }) => {
   const [name, setName] = useState('');
+  const [unit, setUnit] = useState('');
   const [selectedGroupId, setSelectedGroupId] = useState<string>('');
   const [error, setError] = useState('');
   
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [editUnit, setEditUnit] = useState('');
   const [editGroupId, setEditGroupId] = useState<string>('');
 
   const [newGroupName, setNewGroupName] = useState('');
@@ -33,24 +34,26 @@ const SalesItemsPage: React.FC<Props> = ({
   const addItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return setError('يرجى إدخال اسم الصنف');
+    if (!unit.trim()) return setError('يرجى إدخال وحدة القياس');
     if (items.some(i => i.name.trim().toLowerCase() === name.trim().toLowerCase())) return setError('هذا الصنف موجود بالفعل');
 
-    // Fix: Passing partial object is now allowed by updated onAdd prop type
     await onAdd({ 
       id: crypto.randomUUID() as `${string}-${string}-${string}-${string}-${string}`, 
       name: name.trim(),
+      unit: unit.trim(),
       groupId: selectedGroupId || undefined
     });
     setName('');
+    setUnit('');
     setError('');
   };
 
   const saveEdit = async (id: string) => {
     if (!editName.trim()) return;
-    // Fix: Passing partial object is now allowed by updated onUpdate prop type
     await onUpdate({ 
       id, 
       name: editName.trim(),
+      unit: editUnit.trim(),
       groupId: editGroupId || undefined
     });
     setEditingId(null);
@@ -59,7 +62,6 @@ const SalesItemsPage: React.FC<Props> = ({
   const handleAddGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGroupName.trim()) return;
-    // Fix: Passing partial object is now allowed by updated onAddGroup prop type
     await onAddGroup({ id: crypto.randomUUID() as `${string}-${string}-${string}-${string}-${string}`, name: newGroupName.trim() });
     setNewGroupName('');
   };
@@ -127,16 +129,26 @@ const SalesItemsPage: React.FC<Props> = ({
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 dark:text-white">
           <Plus className="w-5 h-5 text-emerald-500" /> إضافة صنف مبيعات جديد
         </h3>
-        <form onSubmit={addItem} className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1">
+        <form onSubmit={addItem} className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="md:col-span-2">
             <input
               type="text" placeholder="اسم الصنف (مثال: برجر دجاج)"
               className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-slate-800 dark:text-white"
               value={name} onChange={(e) => setName(e.target.value)}
             />
-            {error && <p className="text-rose-500 text-xs mt-1">{error}</p>}
           </div>
-          <div className="w-full md:w-64">
+          <div>
+            <input
+              type="text" placeholder="الوحدة (حبة، وجبة، كيلو..)"
+              list="common-item-units"
+              className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 bg-white dark:bg-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+              value={unit} onChange={(e) => setUnit(e.target.value)}
+            />
+            <datalist id="common-item-units">
+              <option value="حبة" /><option value="وجبة" /><option value="ساندوتش" /><option value="كيلو" /><option value="لتر" /><option value="كوب" />
+            </datalist>
+          </div>
+          <div>
             <select
               className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 bg-white dark:bg-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
               value={selectedGroupId} onChange={(e) => setSelectedGroupId(e.target.value)}
@@ -145,7 +157,10 @@ const SalesItemsPage: React.FC<Props> = ({
               {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
           </div>
-          <button className="bg-emerald-500 text-white px-8 py-2.5 rounded-xl hover:bg-emerald-600 font-bold h-fit shadow-lg shadow-emerald-500/20 transition-all active:scale-95">إضافة الصنف</button>
+          <div className="md:col-span-4">
+            {error && <p className="text-rose-500 text-xs mb-2">{error}</p>}
+            <button className="w-full md:w-auto bg-emerald-500 text-white px-8 py-2.5 rounded-xl hover:bg-emerald-600 font-bold shadow-lg shadow-emerald-500/20 transition-all active:scale-95">إضافة الصنف</button>
+          </div>
         </form>
       </div>
 
@@ -171,7 +186,10 @@ const SalesItemsPage: React.FC<Props> = ({
                             <td className="px-6 py-3">
                               <input type="text" className="w-full border dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white rounded-lg px-3 py-1 outline-none focus:ring-2 focus:ring-emerald-500" value={editName} onChange={(e) => setEditName(e.target.value)} autoFocus />
                             </td>
-                            <td className="px-6 py-3 w-48">
+                            <td className="px-6 py-3 w-32">
+                              <input type="text" className="w-full border dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white rounded-lg px-2 py-1 outline-none" value={editUnit} onChange={(e) => setEditUnit(e.target.value)} placeholder="الوحدة" />
+                            </td>
+                            <td className="px-6 py-3 w-40">
                               <select className="w-full border dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white rounded-lg px-2 py-1 outline-none" value={editGroupId} onChange={(e) => setEditGroupId(e.target.value)}>
                                 <option value="">بدون مجموعة</option>
                                 {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
@@ -188,11 +206,14 @@ const SalesItemsPage: React.FC<Props> = ({
                               <Utensils className="w-4 h-4 text-slate-300" />
                               <span className="font-bold text-slate-700 dark:text-slate-200">{item.name}</span>
                             </td>
-                            <td className="px-6 py-4 w-48">
+                            <td className="px-6 py-4 text-slate-500 dark:text-slate-400 w-32 font-medium">
+                              {item.unit || '-'}
+                            </td>
+                            <td className="px-6 py-4 w-40">
                               {/* Empty for symmetry */}
                             </td>
                             <td className="px-6 py-4 flex justify-end gap-1">
-                              <button onClick={() => { setEditingId(item.id); setEditName(item.name); setEditGroupId(item.groupId || ''); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg" title="تعديل"><Edit3 className="w-4 h-4" /></button>
+                              <button onClick={() => { setEditingId(item.id); setEditName(item.name); setEditUnit(item.unit || ''); setEditGroupId(item.groupId || ''); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg" title="تعديل"><Edit3 className="w-4 h-4" /></button>
                               <button onClick={() => handleDelete(item.id, item.name)} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg" title="حذف"><Trash2 className="w-4 h-4" /></button>
                             </td>
                           </>

@@ -33,6 +33,7 @@ export interface Material {
 export interface SalesItem {
   id: string;
   name: string;
+  unit?: string; // Added unit field
   groupId?: string;
   restaurantId: string;
 }
@@ -54,6 +55,8 @@ export interface SaleEntry {
   itemId: string;
   quantitySold: number;
   date: string;
+  referenceNumber?: string; // Added reference number for grouping batches
+  timestamp?: number; // Creation timestamp
   restaurantId: string;
 }
 

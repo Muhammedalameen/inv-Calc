@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChefHat, Loader2, CheckCircle2, AlertCircle, X, Store, Settings, Plus, Trash2, ArrowRight, Copy } from 'lucide-react';
+import { ChefHat, Loader2, CheckCircle2, AlertCircle, X, Store, Settings, Plus, Trash2, ArrowRight, Copy, Lock, KeyRound } from 'lucide-react';
 import { 
   Material, SalesItem, Recipe, SaleEntry,
   MaterialGroup, SalesItemGroup, Restaurant
@@ -24,6 +24,10 @@ interface Toast {
 }
 
 const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [pin, setPin] = useState('');
+  const [authError, setAuthError] = useState('');
+
   const [currentRestaurant, setCurrentRestaurant] = useState<Restaurant | null>(null);
   const [isManagerMode, setIsManagerMode] = useState(false);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
@@ -90,6 +94,17 @@ const App: React.FC = () => {
     };
     loadData();
   }, [currentRestaurant, addToast]);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pin === '147852') {
+      setIsAuthenticated(true);
+      setAuthError('');
+    } else {
+      setAuthError('رمز الدخول غير صحيح');
+      setPin('');
+    }
+  };
 
   const handleCreateRestaurant = async () => {
     if (!newRestName.trim()) return;
@@ -190,6 +205,14 @@ const App: React.FC = () => {
       const exists = prev.some(old => old.itemId === recipe.itemId);
       return exists ? prev.map(old => old.itemId === recipe.itemId ? recipe : old) : [...prev, recipe];
     });
+    addToast('تم حفظ الوصفة بنجاح');
+  };
+
+  const handleDeleteRecipe = async (itemId: string) => {
+    if (!currentRestaurant) return;
+    await db.deleteRecipe(itemId, currentRestaurant.id);
+    setRecipes(prev => prev.filter(r => r.itemId !== itemId));
+    addToast('تم حذف الوصفة بنجاح');
   };
 
   const handleSaveSales = async (entries: Omit<SaleEntry, 'restaurantId'>[]) => {
@@ -197,12 +220,56 @@ const App: React.FC = () => {
     const salesWithId = entries.map(e => ({ ...e, restaurantId: currentRestaurant.id }));
     await db.saveSales(salesWithId);
     setSales(prev => [...salesWithId, ...prev]);
+    addToast('تم تسجيل المبيعات بنجاح');
   };
 
   const handleDeleteSale = async (id: string) => {
     await db.deleteSale(id);
     setSales(prev => prev.filter(s => s.id !== id));
+    addToast('تم حذف عملية البيع');
   };
+
+  const handleUpdateSale = async (id: string, quantity: number) => {
+    await db.updateSale(id, quantity);
+    setSales(prev => prev.map(s => s.id === id ? { ...s, quantitySold: quantity } : s));
+    addToast('تم تعديل الكمية بنجاح');
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4" dir="rtl">
+        <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md text-center">
+          <div className="mb-6 flex justify-center">
+            <div className="bg-emerald-100 p-4 rounded-full">
+              <Lock className="w-10 h-10 text-emerald-600" />
+            </div>
+          </div>
+          <h1 className="text-2xl font-bold text-slate-800 mb-2">تسجيل الدخول للنظام</h1>
+          <p className="text-slate-500 mb-8 text-sm">أدخل رمز الدخول للمتابعة</p>
+          
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div className="relative">
+              <KeyRound className="absolute top-1/2 -translate-y-1/2 right-4 text-slate-400 w-5 h-5" />
+              <input 
+                type="password" 
+                maxLength={6}
+                placeholder="رمز الدخول (PIN)" 
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-12 py-3.5 text-lg font-bold text-center tracking-widest outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                autoFocus
+              />
+            </div>
+            {authError && <p className="text-rose-500 text-sm font-bold animate-pulse">{authError}</p>}
+            <button className="w-full bg-emerald-600 text-white py-3.5 rounded-xl font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-500/30">
+              دخول
+            </button>
+          </form>
+          <p className="mt-8 text-xs text-slate-400">CulinaTrack v1.2</p>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading && !currentRestaurant) {
     return (
@@ -348,7 +415,8 @@ const App: React.FC = () => {
             items={salesItems} 
             materials={materials} 
             recipes={recipes} 
-            onSave={handleSaveRecipe} 
+            onSave={handleSaveRecipe}
+            onDelete={handleDeleteRecipe}
           />
         );
       case 'sales':
@@ -358,7 +426,7 @@ const App: React.FC = () => {
             sales={sales} 
             onSave={handleSaveSales} 
             onDeleteSale={handleDeleteSale}
-            onUpdateSale={db.updateSale}
+            onUpdateSale={handleUpdateSale}
           />
         );
       case 'reports':

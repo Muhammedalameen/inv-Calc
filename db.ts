@@ -18,7 +18,7 @@ export const initDb = async () => {
       "CREATE TABLE IF NOT EXISTS material_groups (id TEXT PRIMARY KEY, name TEXT NOT NULL, restaurant_id TEXT)",
       "CREATE TABLE IF NOT EXISTS sales_item_groups (id TEXT PRIMARY KEY, name TEXT NOT NULL, restaurant_id TEXT)",
       "CREATE TABLE IF NOT EXISTS materials (id TEXT PRIMARY KEY, name TEXT, unit TEXT, group_id TEXT, restaurant_id TEXT)",
-      "CREATE TABLE IF NOT EXISTS sales_items (id TEXT PRIMARY KEY, name TEXT, group_id TEXT, restaurant_id TEXT)",
+      "CREATE TABLE IF NOT EXISTS sales_items (id TEXT PRIMARY KEY, name TEXT, unit TEXT, group_id TEXT, restaurant_id TEXT)",
       "CREATE TABLE IF NOT EXISTS recipes (item_id TEXT, material_id TEXT, sub_item_id TEXT, quantity REAL, restaurant_id TEXT)",
       "CREATE TABLE IF NOT EXISTS sales (id TEXT PRIMARY KEY, item_id TEXT, quantity_sold INTEGER, sale_date TEXT, restaurant_id TEXT)"
     ], "write");
@@ -39,10 +39,13 @@ export const initDb = async () => {
     await migrateColumn("materials", "group_id", "TEXT");
     await migrateColumn("sales_items", "restaurant_id", "TEXT");
     await migrateColumn("sales_items", "group_id", "TEXT");
+    await migrateColumn("sales_items", "unit", "TEXT"); // New column for Unit
     await migrateColumn("recipes", "restaurant_id", "TEXT");
     await migrateColumn("recipes", "sub_item_id", "TEXT");
     await migrateColumn("recipes", "material_id", "TEXT");
     await migrateColumn("sales", "restaurant_id", "TEXT");
+    await migrateColumn("sales", "reference_number", "TEXT"); // New Reference Number
+    await migrateColumn("sales", "timestamp", "INTEGER"); // New Timestamp
 
     // 3. Create indices for performance
     try {
@@ -132,8 +135,8 @@ export const db = {
       salesItemMap.set(row.id as string, newId);
       const newGroupId = row.group_id ? salesItemGroupMap.get(row.group_id as string) : null;
       await client.execute({
-        sql: "INSERT INTO sales_items (id, name, group_id, restaurant_id) VALUES (?, ?, ?, ?)",
-        args: [newId, row.name, newGroupId, targetId]
+        sql: "INSERT INTO sales_items (id, name, unit, group_id, restaurant_id) VALUES (?, ?, ?, ?, ?)",
+        args: [newId, row.name, row.unit || null, newGroupId, targetId]
       });
     }
 
@@ -229,14 +232,15 @@ export const db = {
     return rs.rows.map(row => ({ 
       id: row.id as string, 
       name: row.name as string,
+      unit: row.unit as string || undefined,
       groupId: row.group_id as string || undefined,
       restaurantId: row.restaurant_id as string
     }));
   },
   saveItem: async (i: SalesItem) => {
     await client.execute({
-      sql: "INSERT OR REPLACE INTO sales_items (id, name, group_id, restaurant_id) VALUES (?, ?, ?, ?)",
-      args: [i.id, i.name, i.groupId || null, i.restaurantId]
+      sql: "INSERT OR REPLACE INTO sales_items (id, name, unit, group_id, restaurant_id) VALUES (?, ?, ?, ?, ?)",
+      args: [i.id, i.name, i.unit || null, i.groupId || null, i.restaurantId]
     });
   },
   deleteItem: async (id: string) => {
@@ -280,11 +284,17 @@ export const db = {
     ];
     await client.batch(queries, "write");
   },
+  deleteRecipe: async (itemId: string, restaurantId: string) => {
+    await client.execute({
+      sql: "DELETE FROM recipes WHERE item_id = ? AND restaurant_id = ?",
+      args: [itemId, restaurantId]
+    });
+  },
 
   // Sales
   getSales: async (restaurantId: string): Promise<SaleEntry[]> => {
     const rs = await client.execute({
-      sql: "SELECT id, item_id as itemId, quantity_sold as quantitySold, sale_date as date, restaurant_id as restaurantId FROM sales WHERE restaurant_id = ? ORDER BY sale_date DESC",
+      sql: "SELECT id, item_id as itemId, quantity_sold as quantitySold, sale_date as date, reference_number as referenceNumber, timestamp, restaurant_id as restaurantId FROM sales WHERE restaurant_id = ? ORDER BY sale_date DESC, timestamp DESC",
       args: [restaurantId]
     });
     return rs.rows.map(row => ({
@@ -292,13 +302,15 @@ export const db = {
       itemId: row.itemId as string,
       quantitySold: row.quantitySold as number,
       date: row.date as string,
+      referenceNumber: row.referenceNumber as string || undefined,
+      timestamp: row.timestamp as number || undefined,
       restaurantId: row.restaurantId as string
     }));
   },
   saveSales: async (newSales: SaleEntry[]) => {
     const queries = newSales.map(s => ({
-      sql: "INSERT INTO sales (id, item_id, quantity_sold, sale_date, restaurant_id) VALUES (?, ?, ?, ?, ?)",
-      args: [s.id, s.itemId, s.quantitySold, s.date, s.restaurantId]
+      sql: "INSERT INTO sales (id, item_id, quantity_sold, sale_date, reference_number, timestamp, restaurant_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      args: [s.id, s.itemId, s.quantitySold, s.date, s.referenceNumber || null, s.timestamp || Date.now(), s.restaurantId]
     }));
     await client.batch(queries, "write");
   },
