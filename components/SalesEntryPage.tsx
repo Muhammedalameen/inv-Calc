@@ -1,11 +1,13 @@
 
-import React, { useState, useMemo, useRef } from 'react';
-import { Save, History, ShoppingCart, Loader2, Trash2, Edit3, X, Check, Plus, Calendar, Filter, Search, Printer, FileText, Hash, Eye, Clock, ChevronDown, ChevronUp, ChevronLeft } from 'lucide-react';
-import { SalesItem, SaleEntry } from '../types';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
+import { Save, History, ShoppingCart, Loader2, Trash2, Edit3, X, Check, Plus, Calendar, Filter, Search, Printer, FileText, Hash, Eye, Clock, ChevronDown, ChevronUp, ChevronLeft, FileSpreadsheet } from 'lucide-react';
+import { SalesItem, SaleEntry, Material, Recipe } from '../types';
 
 interface Props {
   items: SalesItem[];
   sales: SaleEntry[];
+  materials: Material[];
+  recipes: Recipe[];
   onSave: (newSales: Omit<SaleEntry, 'restaurantId'>[]) => Promise<void>;
   onDeleteSale: (id: string) => Promise<void>;
   onUpdateSale: (id: string, quantity: number) => Promise<void>;
@@ -17,7 +19,15 @@ interface NewSaleRow {
   quantity: number;
 }
 
-const SalesEntryPage: React.FC<Props> = ({ items, sales, onSave, onDeleteSale, onUpdateSale }) => {
+interface PrintState {
+  ref: string;
+  date: string;
+  type: 'invoice' | 'consumption';
+  items?: SaleEntry[]; // For Invoice
+  reportItems?: { name: string; unit: string; total: number }[]; // For Consumption Report
+}
+
+const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onSave, onDeleteSale, onUpdateSale }) => {
   const [activeTab, setActiveTab] = useState<'entry' | 'history'>('entry');
   
   // Entry State
@@ -34,12 +44,83 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, onSave, onDeleteSale, o
   const [expandedRefs, setExpandedRefs] = useState<string[]>([]);
 
   // Printing State
-  const [printData, setPrintData] = useState<{ref: string, date: string, items: SaleEntry[]} | null>(null);
+  const [printData, setPrintData] = useState<PrintState | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
 
+  // --- Recursive Consumption Logic (Shared with ReportsPage) ---
+  const getFlattenedConsumption = useCallback((itemId: string, multiplier: number, memo: Record<string, number> = {}, visited: Set<string> = new Set()): Record<string, number> => {
+    const recipe = recipes.find(r => r.itemId === itemId);
+    if (!recipe || visited.has(itemId)) return memo;
+
+    visited.add(itemId);
+    recipe.ingredients.forEach(ing => {
+      const qty = (ing.quantity || 0) * multiplier;
+      if (ing.materialId) {
+        memo[ing.materialId] = (memo[ing.materialId] || 0) + qty;
+      } else if (ing.subItemId) {
+        getFlattenedConsumption(ing.subItemId, qty, memo, visited);
+      }
+    });
+    visited.delete(itemId);
+    return memo;
+  }, [recipes]);
+
+  // --- Export Logic ---
+  const handleExportBatchReport = (refNumber: string, date: string, batchItems: SaleEntry[]) => {
+    const consumptionMap: Record<string, number> = {};
+    batchItems.forEach(sale => {
+      getFlattenedConsumption(sale.itemId, sale.quantitySold, consumptionMap);
+    });
+
+    const reportData = materials.map(m => ({
+      name: m.name,
+      unit: m.unit,
+      total: consumptionMap[m.id] || 0
+    })).filter(r => r.total > 0);
+
+    if (reportData.length === 0) {
+      alert("لا يوجد استهلاك خامات مسجل لهذه الفاتورة (تأكد من وجود وصفات للأصناف المباعة).");
+      return;
+    }
+
+    const BOM = "\uFEFF";
+    let csvContent = `تقرير استهلاك فاتورة رقم: ${refNumber}\nالتاريخ: ${date}\n\n`;
+    csvContent += "الخامة,الوحدة,إجمالي الكمية المستهلكة\n";
+    reportData.forEach(r => csvContent += `"${r.name}","${r.unit}",${r.total.toFixed(3)}\n`);
+
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `Consumption_Invoice_${refNumber}.csv`;
+    link.click();
+  };
+
   // --- Printing Logic ---
-  const handlePrintBatch = (refNumber: string, date: string, batchItems: SaleEntry[]) => {
-    setPrintData({ ref: refNumber, date, items: batchItems });
+  const handlePrintBatchInvoice = (refNumber: string, date: string, batchItems: SaleEntry[]) => {
+    setPrintData({ ref: refNumber, date, type: 'invoice', items: batchItems });
+    setTimeout(() => {
+      window.print();
+    }, 100);
+  };
+
+  const handlePrintBatchConsumption = (refNumber: string, date: string, batchItems: SaleEntry[]) => {
+    const consumptionMap: Record<string, number> = {};
+    batchItems.forEach(sale => {
+      getFlattenedConsumption(sale.itemId, sale.quantitySold, consumptionMap);
+    });
+
+    const reportItems = materials.map(m => ({
+      name: m.name,
+      unit: m.unit,
+      total: consumptionMap[m.id] || 0
+    })).filter(r => r.total > 0);
+
+    if (reportItems.length === 0) {
+      alert("لا يوجد استهلاك خامات مسجل لهذه الفاتورة.");
+      return;
+    }
+
+    setPrintData({ ref: refNumber, date, type: 'consumption', reportItems });
     setTimeout(() => {
       window.print();
     }, 100);
@@ -67,7 +148,6 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, onSave, onDeleteSale, o
     if (validRows.length === 0) return alert('يرجى اختيار صنف وإدخال كمية لواحد على الأقل');
 
     setIsSaving(true);
-    // Generate a simple reference number: #INV-{Random 6 digits}
     const referenceNumber = `#INV-${Math.floor(100000 + Math.random() * 900000)}`;
     const timestamp = Date.now();
 
@@ -84,7 +164,7 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, onSave, onDeleteSale, o
       await onSave(newEntries);
       setRows([{ tempId: crypto.randomUUID(), itemId: '', quantity: 0 }]);
       alert(`تم حفظ الفاتورة بنجاح: ${referenceNumber}`);
-      setActiveTab('history'); // Switch to history to see the new invoice
+      setActiveTab('history');
     } catch (error) {
       console.error(error);
     } finally {
@@ -106,7 +186,7 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, onSave, onDeleteSale, o
     );
   };
 
-  // --- History Logic (Grouped by Date then Reference) ---
+  // --- History Logic ---
   const filteredSales = useMemo(() => {
     return sales.filter(s => {
       const dateMatch = s.date >= filterStartDate && s.date <= filterEndDate;
@@ -116,17 +196,14 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, onSave, onDeleteSale, o
   }, [sales, filterStartDate, filterEndDate, filterItemId]);
 
   const groupedSales = useMemo(() => {
-    // 1. Group by Date
     const byDate: Record<string, SaleEntry[]> = {};
     filteredSales.forEach(sale => {
       if (!byDate[sale.date]) byDate[sale.date] = [];
       byDate[sale.date].push(sale);
     });
 
-    // 2. Sort Dates Descending
     const sortedDates = Object.entries(byDate).sort((a, b) => b[0].localeCompare(a[0]));
 
-    // 3. For each Date, Group by Reference Number
     return sortedDates.map(([date, daySales]) => {
       const byRef: Record<string, SaleEntry[]> = {};
       const noRef: SaleEntry[] = [];
@@ -140,7 +217,6 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, onSave, onDeleteSale, o
         }
       });
 
-      // Sort references by timestamp descending if available
       const sortedRefs = Object.entries(byRef).sort(([, itemsA], [, itemsB]) => {
         const timeA = itemsA[0].timestamp || 0;
         const timeB = itemsB[0].timestamp || 0;
@@ -167,34 +243,61 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, onSave, onDeleteSale, o
       <div className="hidden print:block fixed inset-0 bg-white z-[9999] p-8" ref={printRef}>
         {printData && (
           <div className="max-w-xl mx-auto border border-black p-8">
-             <div className="text-center mb-6 border-b border-black pb-4">
-               <h1 className="text-2xl font-bold mb-2">فاتورة مبيعات</h1>
+             <div className="text-center mb-6 border-b-2 border-black pb-4">
+               <h1 className="text-2xl font-bold mb-2">
+                 {printData.type === 'invoice' ? 'فاتورة مبيعات' : 'تقرير استهلاك خامات'}
+               </h1>
                <div className="flex justify-between text-sm mt-4 font-bold">
-                 <span>رقم الفاتورة: {printData.ref}</span>
+                 <span>رقم المرجع: {printData.ref}</span>
                  <span>التاريخ: {printData.date}</span>
                </div>
              </div>
-             <table className="w-full text-right text-sm border-collapse">
-                <thead>
-                  <tr className="border-b-2 border-black">
-                    <th className="py-2">الصنف</th>
-                    <th className="py-2 text-center">الكمية</th>
-                    <th className="py-2 text-left">الوحدة</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {printData.items.map(item => {
-                    const i = items.find(x => x.id === item.itemId);
-                    return (
-                      <tr key={item.id} className="border-b border-gray-300">
-                        <td className="py-2 font-bold">{i?.name}</td>
-                        <td className="py-2 text-center font-mono">{item.quantitySold}</td>
-                        <td className="py-2 text-left">{i?.unit}</td>
+             
+             {printData.type === 'invoice' && printData.items && (
+               <table className="w-full text-right text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-black">
+                      <th className="py-2">الصنف</th>
+                      <th className="py-2 text-center">الكمية</th>
+                      <th className="py-2 text-left">الوحدة</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {printData.items.map(item => {
+                      const i = items.find(x => x.id === item.itemId);
+                      return (
+                        <tr key={item.id} className="border-b border-gray-300">
+                          <td className="py-2 font-bold">{i?.name}</td>
+                          <td className="py-2 text-center font-mono">{item.quantitySold}</td>
+                          <td className="py-2 text-left">{i?.unit}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+               </table>
+             )}
+
+             {printData.type === 'consumption' && printData.reportItems && (
+               <table className="w-full text-right text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-black">
+                      <th className="py-2">الخامة الأساسية</th>
+                      <th className="py-2 text-center">الكمية المستهلكة</th>
+                      <th className="py-2 text-left">الوحدة</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {printData.reportItems.map((item, idx) => (
+                      <tr key={idx} className="border-b border-gray-300">
+                        <td className="py-2 font-bold">{item.name}</td>
+                        <td className="py-2 text-center font-mono">{item.total.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                        <td className="py-2 text-left">{item.unit}</td>
                       </tr>
-                    )
-                  })}
-                </tbody>
-             </table>
+                    ))}
+                  </tbody>
+               </table>
+             )}
+
              <div className="mt-8 pt-4 border-t border-black text-center text-xs">
                 تمت الطباعة بواسطة نظام CulinaTrack
              </div>
@@ -387,11 +490,26 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, onSave, onDeleteSale, o
                               {/* Right Side: Actions */}
                               <div className="flex items-center gap-2 w-full md:w-auto justify-end">
                                  <button 
-                                   onClick={(e) => { e.stopPropagation(); handlePrintBatch(ref, dayGroup.date, batchItems); }}
+                                   onClick={(e) => { e.stopPropagation(); handleExportBatchReport(ref, dayGroup.date, batchItems); }}
+                                   className="p-2.5 text-blue-500 hover:bg-blue-50 hover:text-blue-700 dark:hover:bg-blue-900/20 rounded-xl transition-colors border border-transparent hover:border-blue-200"
+                                   title="تصدير تقرير استهلاك (Excel)"
+                                 >
+                                    <FileSpreadsheet className="w-5 h-5" />
+                                 </button>
+                                 <button 
+                                   onClick={(e) => { e.stopPropagation(); handlePrintBatchConsumption(ref, dayGroup.date, batchItems); }}
+                                   className="p-2.5 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-900/20 rounded-xl transition-colors border border-transparent hover:border-emerald-200"
+                                   title="طباعة تقرير استهلاك"
+                                 >
+                                    <Printer className="w-5 h-5" />
+                                 </button>
+                                 <div className="w-px h-8 bg-slate-200 dark:bg-slate-700 mx-1"></div>
+                                 <button 
+                                   onClick={(e) => { e.stopPropagation(); handlePrintBatchInvoice(ref, dayGroup.date, batchItems); }}
                                    className="p-2.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-300 rounded-xl transition-colors border border-transparent hover:border-slate-200"
                                    title="طباعة الفاتورة"
                                  >
-                                    <Printer className="w-5 h-5" />
+                                    <FileText className="w-5 h-5" />
                                  </button>
                                  <button 
                                    onClick={(e) => { e.stopPropagation(); handleDeleteBatch(ref, batchItems); }}

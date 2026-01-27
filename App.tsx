@@ -424,6 +424,8 @@ const App: React.FC = () => {
           <SalesEntryPage 
             items={salesItems} 
             sales={sales} 
+            materials={materials}
+            recipes={recipes}
             onSave={handleSaveSales} 
             onDeleteSale={handleDeleteSale}
             onUpdateSale={handleUpdateSale}
