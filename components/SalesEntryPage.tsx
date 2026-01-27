@@ -19,21 +19,31 @@ interface NewSaleRow {
   quantity: number;
 }
 
+// Data structure for Detailed Report
 interface DetailedConsumptionItem {
   itemName: string;
   quantitySold: number;
   ingredients: { name: string; unit: string; total: number }[];
 }
 
+// Data structure for Aggregated Report item
+interface AggregatedConsumptionItem {
+  name: string;
+  unit: string;
+  total: number;
+}
+
+// Print State Configuration
 interface PrintState {
   ref: string;
   date: string;
   type: 'invoice' | 'consumption-aggregated' | 'consumption-detailed';
-  invoiceItems?: SaleEntry[]; // For Invoice
-  aggregatedReport?: { name: string; unit: string; total: number }[]; // For Aggregated Consumption
-  detailedReport?: DetailedConsumptionItem[]; // For Detailed Consumption
+  invoiceItems?: SaleEntry[]; 
+  aggregatedReport?: AggregatedConsumptionItem[]; 
+  detailedReport?: DetailedConsumptionItem[];
 }
 
+// Modal State
 interface ConsumptionModalState {
   isOpen: boolean;
   refNumber: string;
@@ -80,10 +90,10 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
     return memo;
   }, [recipes]);
 
-  // --- Printing Handlers ---
+  // --- Printing Data Preparation ---
 
-  // 1. Prepare Data for Aggregated Report
-  const prepareAggregatedReport = (batchItems: SaleEntry[]) => {
+  // 1. Prepare Aggregated Data
+  const prepareAggregatedReport = (batchItems: SaleEntry[]): AggregatedConsumptionItem[] => {
     const consumptionMap: Record<string, number> = {};
     batchItems.forEach(sale => {
       getFlattenedConsumption(sale.itemId, sale.quantitySold, consumptionMap);
@@ -95,11 +105,11 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
     })).filter(r => r.total > 0);
   };
 
-  // 2. Prepare Data for Detailed Report
-  const prepareDetailedReport = (batchItems: SaleEntry[]) => {
+  // 2. Prepare Detailed Data
+  const prepareDetailedReport = (batchItems: SaleEntry[]): DetailedConsumptionItem[] => {
     const result: DetailedConsumptionItem[] = [];
     
-    // Group batch items by Item ID first (in case the same item appears multiple times in a batch, though unlikely in this UI)
+    // Group sales by Item ID to show "Burger: 5" instead of listing Burger 5 times
     const consolidatedItems: Record<string, number> = {};
     batchItems.forEach(item => {
       consolidatedItems[item.itemId] = (consolidatedItems[item.itemId] || 0) + item.quantitySold;
@@ -110,7 +120,6 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
       if (!saleItem) return;
 
       const consumptionMap: Record<string, number> = {};
-      // Calculate consumption for ONE unit, then we'll display total for sold qty
       getFlattenedConsumption(itemId, totalQty, consumptionMap);
 
       const ingredients = materials.map(m => ({
@@ -130,15 +139,17 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
     return result;
   };
 
-  // 3. Trigger Print
+  // --- Print Handlers ---
+
+  const handleOpenConsumptionModal = (refNumber: string, date: string, batchItems: SaleEntry[]) => {
+    setConsumptionModal({ isOpen: true, refNumber, date, batchItems });
+  };
+
   const handlePrint = (type: PrintState['type']) => {
     if (!consumptionModal && type !== 'invoice') return;
     
-    // Invoice Printing (Direct)
-    if (type === 'invoice') {
-       // logic handled by direct call in button usually, but included for completeness
-       return;
-    }
+    // Invoice Printing is handled directly via handlePrintBatchInvoice, but checking here for safety
+    if (type === 'invoice') return;
 
     const { refNumber, date, batchItems } = consumptionModal!;
 
@@ -154,10 +165,6 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
 
     setConsumptionModal(null); // Close modal
     setTimeout(() => window.print(), 100);
-  };
-
-  const handleOpenConsumptionModal = (refNumber: string, date: string, batchItems: SaleEntry[]) => {
-    setConsumptionModal({ isOpen: true, refNumber, date, batchItems });
   };
 
   const handlePrintBatchInvoice = (refNumber: string, date: string, batchItems: SaleEntry[]) => {
@@ -309,7 +316,7 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
                  <Printer className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
               </div>
               <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-1">طباعة تقرير استهلاك</h3>
-              <p className="text-sm text-slate-500">اختر نوع التقرير المطلوب للفاتورة {consumptionModal.refNumber}</p>
+              <p className="text-sm text-slate-500">اختر نوع التقرير المطلوب للفاتورة <span className="font-mono font-bold text-slate-700">{consumptionModal.refNumber}</span></p>
             </div>
             
             <div className="p-6 space-y-3">
@@ -322,7 +329,7 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
                 </div>
                 <div>
                   <h4 className="font-bold text-slate-800 dark:text-white group-hover:text-emerald-700 dark:group-hover:text-emerald-400">تقرير تجميعي (ملخص)</h4>
-                  <p className="text-xs text-slate-500 mt-1">يعرض إجمالي كميات الخامات المستهلكة في الفاتورة بالكامل.</p>
+                  <p className="text-xs text-slate-500 mt-1">يعرض إجمالي كميات الخامات المستهلكة في الفاتورة بالكامل (للمخزن).</p>
                 </div>
               </button>
 
@@ -348,27 +355,27 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
       )}
 
       {/* --- Hidden Print Templates --- */}
-      <div className="hidden print:block fixed inset-0 bg-white z-[9999] p-8" ref={printRef}>
+      <div className="hidden print:block fixed inset-0 bg-white z-[9999] p-10 overflow-y-auto" ref={printRef}>
         {printData && (
-          <div className="max-w-2xl mx-auto">
+          <div className="max-w-3xl mx-auto">
              {/* Print Header */}
              <div className="flex items-center justify-between border-b-2 border-black pb-6 mb-8">
                <div className="flex items-center gap-4">
-                  <div className="border-2 border-black p-2 rounded-lg"><ChefHat className="w-8 h-8" /></div>
+                  <div className="border-2 border-black p-3 rounded-lg"><ChefHat className="w-10 h-10" /></div>
                   <div>
-                    <h1 className="text-3xl font-bold">CulinaTrack</h1>
-                    <p className="text-sm font-bold text-gray-600">نظام إدارة المطاعم</p>
+                    <h1 className="text-4xl font-bold tracking-tight">CulinaTrack</h1>
+                    <p className="text-sm font-bold text-gray-600 mt-1">نظام إدارة استهلاك المطاعم</p>
                   </div>
                </div>
                <div className="text-left">
-                  <h2 className="text-xl font-bold uppercase tracking-wide">
+                  <h2 className="text-2xl font-bold uppercase tracking-wide bg-black text-white px-4 py-1 inline-block mb-2">
                     {printData.type === 'invoice' && 'فاتورة مبيعات'}
                     {printData.type === 'consumption-aggregated' && 'تقرير استهلاك (تجميعي)'}
                     {printData.type === 'consumption-detailed' && 'تقرير استهلاك (تفصيلي)'}
                   </h2>
-                  <div className="flex flex-col text-sm font-bold mt-2">
+                  <div className="flex flex-col text-sm font-bold space-y-1">
                     <span>رقم المرجع: <span className="font-mono text-lg">{printData.ref}</span></span>
-                    <span>التاريخ: {printData.date}</span>
+                    <span>تاريخ الفاتورة: {printData.date}</span>
                   </div>
                </div>
              </div>
@@ -403,7 +410,7 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
                <table className="w-full text-right text-sm border-collapse border border-black">
                   <thead className="bg-gray-100">
                     <tr>
-                      <th className="py-3 px-4 border-b border-black border-l">الخامة الأساسية</th>
+                      <th className="py-3 px-4 border-b border-black border-l w-1/2">الخامة الأساسية</th>
                       <th className="py-3 px-4 text-center border-b border-black border-l">إجمالي الكمية المستهلكة</th>
                       <th className="py-3 px-4 text-left border-b border-black">الوحدة</th>
                     </tr>
@@ -424,25 +431,28 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
              {printData.type === 'consumption-detailed' && printData.detailedReport && (
                <div className="space-y-6">
                  {printData.detailedReport.map((item, idx) => (
-                   <div key={idx} className="border border-black break-inside-avoid">
-                      <div className="bg-gray-100 px-4 py-2 border-b border-black flex justify-between items-center">
+                   <div key={idx} className="border border-black break-inside-avoid shadow-sm">
+                      <div className="bg-gray-100 px-4 py-3 border-b border-black flex justify-between items-center">
                         <span className="font-bold text-lg">{item.itemName}</span>
-                        <span className="font-mono font-bold bg-black text-white px-3 py-0.5 text-sm rounded-full">العدد: {item.quantitySold}</span>
+                        <div className="flex items-center gap-2">
+                           <span className="text-xs font-bold text-gray-500">العدد المباع:</span>
+                           <span className="font-mono font-bold bg-black text-white px-3 py-1 rounded-md">{item.quantitySold}</span>
+                        </div>
                       </div>
                       <table className="w-full text-right text-sm">
-                        <thead className="text-xs text-gray-500 uppercase border-b border-gray-300">
+                        <thead className="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
                           <tr>
-                            <th className="px-4 py-1.5 w-2/3">الخامة المستهلكة</th>
-                            <th className="px-4 py-1.5 text-center">الكمية</th>
-                            <th className="px-4 py-1.5 text-left">الوحدة</th>
+                            <th className="px-4 py-2 w-2/3">الخامة المستهلكة</th>
+                            <th className="px-4 py-2 text-center">الكمية</th>
+                            <th className="px-4 py-2 text-left">الوحدة</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
                           {item.ingredients.map((ing, iIdx) => (
                             <tr key={iIdx}>
-                              <td className="px-4 py-1.5 font-medium">{ing.name}</td>
-                              <td className="px-4 py-1.5 text-center font-mono">{ing.total.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
-                              <td className="px-4 py-1.5 text-left text-xs">{ing.unit}</td>
+                              <td className="px-4 py-2 font-medium">{ing.name}</td>
+                              <td className="px-4 py-2 text-center font-mono">{ing.total.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                              <td className="px-4 py-2 text-left text-xs">{ing.unit}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -452,9 +462,15 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
                </div>
              )}
 
-             <div className="mt-12 pt-4 border-t-2 border-black text-center text-xs flex justify-between font-bold">
-                <span>تم طباعة التقرير بواسطة نظام CulinaTrack</span>
-                <span>توقيت الطباعة: {new Date().toLocaleTimeString('ar-EG')}</span>
+             <div className="mt-12 pt-6 border-t-2 border-black flex justify-between items-end">
+                <div className="text-xs font-bold text-gray-500">
+                   <p>تم طباعة التقرير بواسطة نظام CulinaTrack</p>
+                   <p>توقيت الطباعة: {new Date().toLocaleString('ar-EG')}</p>
+                </div>
+                <div className="text-center w-40">
+                   <div className="h-0.5 bg-black w-full mb-2"></div>
+                   <p className="text-xs font-bold">توقيع المسؤول</p>
+                </div>
              </div>
           </div>
         )}
