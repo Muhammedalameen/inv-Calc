@@ -1,8 +1,10 @@
 
 import { createClient } from "@libsql/client";
-import { Material, SalesItem, Recipe, SaleEntry, Unit } from './types';
+import { 
+  Material, SalesItem, Recipe, SaleEntry, 
+  MaterialGroup, SalesItemGroup, Restaurant 
+} from './types';
 
-// ملاحظة: في بيئة Cloudflare Pages، يفضل وضع هذه القيم في متغيرات بيئة (Environment Variables)
 const client = createClient({
   url: "libsql://inventory-cal-muhammedalameen.aws-us-west-2.turso.io",
   authToken: "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjY3NTMwNDUsImlkIjoiOTI3NzQ3ODEtZmI0Yy00MDYzLThiNTgtMDYyMzFhZGZlNWRkIiwicmlkIjoiNTdiM2M5YjAtMWU1NS00MWJhLWFiYjgtMDJlZWQ3ZTM1NzRmIn0.2-Up3Y1Ius_1ZLaOewccUrP7tvSdFM9nTrEIAcOuOl6RGER9e5lfoSMIeKlKJSCEeIn1ef96R2J5qmvYbPCIDw"
@@ -11,52 +13,208 @@ const client = createClient({
 export const initDb = async () => {
   try {
     await client.batch([
-      "CREATE TABLE IF NOT EXISTS units (id TEXT PRIMARY KEY, name TEXT NOT NULL)",
-      "CREATE TABLE IF NOT EXISTS materials (id TEXT PRIMARY KEY, name TEXT, unit TEXT)",
-      "CREATE TABLE IF NOT EXISTS sales_items (id TEXT PRIMARY KEY, name TEXT)",
-      "CREATE TABLE IF NOT EXISTS recipes (item_id TEXT, material_id TEXT, quantity REAL, PRIMARY KEY (item_id, material_id))",
-      "CREATE TABLE IF NOT EXISTS sales (id TEXT PRIMARY KEY, item_id TEXT, quantity_sold INTEGER, sale_date TEXT)"
+      "CREATE TABLE IF NOT EXISTS restaurants (id TEXT PRIMARY KEY, name TEXT NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS material_groups (id TEXT PRIMARY KEY, name TEXT NOT NULL, restaurant_id TEXT)",
+      "CREATE TABLE IF NOT EXISTS sales_item_groups (id TEXT PRIMARY KEY, name TEXT NOT NULL, restaurant_id TEXT)",
+      "CREATE TABLE IF NOT EXISTS materials (id TEXT PRIMARY KEY, name TEXT, unit TEXT, group_id TEXT, restaurant_id TEXT)",
+      "CREATE TABLE IF NOT EXISTS sales_items (id TEXT PRIMARY KEY, name TEXT, group_id TEXT, restaurant_id TEXT)",
+      "CREATE TABLE IF NOT EXISTS recipes (item_id TEXT, material_id TEXT, sub_item_id TEXT, quantity REAL, restaurant_id TEXT)",
+      "CREATE TABLE IF NOT EXISTS sales (id TEXT PRIMARY KEY, item_id TEXT, quantity_sold INTEGER, sale_date TEXT, restaurant_id TEXT)"
     ], "write");
 
-    const checkUnits = await client.execute("SELECT count(*) as count FROM units");
-    if (Number(checkUnits.rows[0].count) === 0) {
-      const defaultUnits = ['كجم', 'جرام', 'لتر', 'مل', 'حبة', 'كرتون', 'كيس'];
-      const seedQueries = defaultUnits.map(u => ({
-        sql: "INSERT INTO units (id, name) VALUES (?, ?)",
-        args: [crypto.randomUUID(), u]
-      }));
-      await client.batch(seedQueries, "write");
+    const migrateColumn = async (table: string, column: string, type: string) => {
+      try {
+        await client.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+      } catch (e: any) {
+        // Suppress duplicate column errors
+      }
+    };
+
+    await migrateColumn("material_groups", "restaurant_id", "TEXT");
+    await migrateColumn("sales_item_groups", "restaurant_id", "TEXT");
+    await migrateColumn("materials", "restaurant_id", "TEXT");
+    await migrateColumn("materials", "group_id", "TEXT");
+    await migrateColumn("sales_items", "restaurant_id", "TEXT");
+    await migrateColumn("sales_items", "group_id", "TEXT");
+    await migrateColumn("recipes", "restaurant_id", "TEXT");
+    await migrateColumn("recipes", "sub_item_id", "TEXT");
+    await migrateColumn("recipes", "material_id", "TEXT");
+    await migrateColumn("sales", "restaurant_id", "TEXT");
+
+    try {
+      await client.execute("CREATE INDEX IF NOT EXISTS idx_recipes_item ON recipes(item_id, restaurant_id)");
+      await client.execute("CREATE INDEX IF NOT EXISTS idx_sales_restaurant ON sales(restaurant_id)");
+    } catch (indexError) {
+      console.error("Index creation error:", indexError);
     }
+    
   } catch (error) {
     console.error("Database Init Error:", error);
   }
 };
 
 export const db = {
-  // Units
-  getUnits: async (): Promise<Unit[]> => {
-    const rs = await client.execute("SELECT * FROM units ORDER BY name");
+  getRestaurants: async (): Promise<Restaurant[]> => {
+    const rs = await client.execute("SELECT * FROM restaurants ORDER BY name");
     return rs.rows.map(row => ({ id: row.id as string, name: row.name as string }));
   },
-  saveUnit: async (u: Unit) => {
+  saveRestaurant: async (r: Restaurant) => {
     await client.execute({
-      sql: "INSERT OR REPLACE INTO units (id, name) VALUES (?, ?)",
-      args: [u.id, u.name]
+      sql: "INSERT OR REPLACE INTO restaurants (id, name) VALUES (?, ?)",
+      args: [r.id, r.name]
     });
   },
-  deleteUnit: async (id: string) => {
-    await client.execute({ sql: "DELETE FROM units WHERE id = ?", args: [id] });
+  deleteRestaurant: async (id: string) => {
+    await client.batch([
+      { sql: "DELETE FROM sales WHERE restaurant_id = ?", args: [id] },
+      { sql: "DELETE FROM recipes WHERE restaurant_id = ?", args: [id] },
+      { sql: "DELETE FROM sales_items WHERE restaurant_id = ?", args: [id] },
+      { sql: "DELETE FROM materials WHERE restaurant_id = ?", args: [id] },
+      { sql: "DELETE FROM sales_item_groups WHERE restaurant_id = ?", args: [id] },
+      { sql: "DELETE FROM material_groups WHERE restaurant_id = ?", args: [id] },
+      { sql: "DELETE FROM restaurants WHERE id = ?", args: [id] }
+    ], "write");
+  },
+
+  cloneRestaurant: async (sourceId: string, newName: string) => {
+    const targetId = crypto.randomUUID();
+    
+    // 1. Create the new restaurant
+    await client.execute({
+      sql: "INSERT INTO restaurants (id, name) VALUES (?, ?)",
+      args: [targetId, newName]
+    });
+
+    // Maps to track old ID -> new ID for related entities
+    const materialGroupMap = new Map<string, string>();
+    const salesItemGroupMap = new Map<string, string>();
+    const materialMap = new Map<string, string>();
+    const salesItemMap = new Map<string, string>();
+
+    // 2. Clone Material Groups
+    const oldMatGroups = await client.execute({ sql: "SELECT * FROM material_groups WHERE restaurant_id = ?", args: [sourceId] });
+    for (const row of oldMatGroups.rows) {
+      const newId = crypto.randomUUID();
+      materialGroupMap.set(row.id as string, newId);
+      await client.execute({
+        sql: "INSERT INTO material_groups (id, name, restaurant_id) VALUES (?, ?, ?)",
+        args: [newId, row.name, targetId]
+      });
+    }
+
+    // 3. Clone Sales Item Groups
+    const oldItemGroups = await client.execute({ sql: "SELECT * FROM sales_item_groups WHERE restaurant_id = ?", args: [sourceId] });
+    for (const row of oldItemGroups.rows) {
+      const newId = crypto.randomUUID();
+      salesItemGroupMap.set(row.id as string, newId);
+      await client.execute({
+        sql: "INSERT INTO sales_item_groups (id, name, restaurant_id) VALUES (?, ?, ?)",
+        args: [newId, row.name, targetId]
+      });
+    }
+
+    // 4. Clone Materials
+    const oldMaterials = await client.execute({ sql: "SELECT * FROM materials WHERE restaurant_id = ?", args: [sourceId] });
+    for (const row of oldMaterials.rows) {
+      const newId = crypto.randomUUID();
+      materialMap.set(row.id as string, newId);
+      const newGroupId = row.group_id ? materialGroupMap.get(row.group_id as string) : null;
+      await client.execute({
+        sql: "INSERT INTO materials (id, name, unit, group_id, restaurant_id) VALUES (?, ?, ?, ?, ?)",
+        args: [newId, row.name, row.unit, newGroupId, targetId]
+      });
+    }
+
+    // 5. Clone Sales Items
+    const oldItems = await client.execute({ sql: "SELECT * FROM sales_items WHERE restaurant_id = ?", args: [sourceId] });
+    for (const row of oldItems.rows) {
+      const newId = crypto.randomUUID();
+      salesItemMap.set(row.id as string, newId);
+      const newGroupId = row.group_id ? salesItemGroupMap.get(row.group_id as string) : null;
+      await client.execute({
+        sql: "INSERT INTO sales_items (id, name, group_id, restaurant_id) VALUES (?, ?, ?, ?)",
+        args: [newId, row.name, newGroupId, targetId]
+      });
+    }
+
+    // 6. Clone Recipes
+    const oldRecipes = await client.execute({ sql: "SELECT * FROM recipes WHERE restaurant_id = ?", args: [sourceId] });
+    for (const row of oldRecipes.rows) {
+      const newItemId = salesItemMap.get(row.item_id as string);
+      const newMatId = row.material_id ? materialMap.get(row.material_id as string) : null;
+      const newSubItemId = row.sub_item_id ? salesItemMap.get(row.sub_item_id as string) : null;
+      
+      if (newItemId) {
+        await client.execute({
+          sql: "INSERT INTO recipes (item_id, material_id, sub_item_id, quantity, restaurant_id) VALUES (?, ?, ?, ?, ?)",
+          args: [newItemId, newMatId, newSubItemId, row.quantity, targetId]
+        });
+      }
+    }
+
+    return { id: targetId, name: newName };
+  },
+
+  // Material Groups
+  getMaterialGroups: async (restaurantId: string): Promise<MaterialGroup[]> => {
+    const rs = await client.execute({
+      sql: "SELECT * FROM material_groups WHERE restaurant_id = ? ORDER BY name",
+      args: [restaurantId]
+    });
+    return rs.rows.map(row => ({ id: row.id as string, name: row.name as string, restaurantId: row.restaurant_id as string }));
+  },
+  saveMaterialGroup: async (g: MaterialGroup) => {
+    await client.execute({
+      sql: "INSERT OR REPLACE INTO material_groups (id, name, restaurant_id) VALUES (?, ?, ?)",
+      args: [g.id, g.name, g.restaurantId]
+    });
+  },
+  deleteMaterialGroup: async (id: string) => {
+    await client.batch([
+      { sql: "UPDATE materials SET group_id = NULL WHERE group_id = ?", args: [id] },
+      { sql: "DELETE FROM material_groups WHERE id = ?", args: [id] }
+    ], "write");
+  },
+
+  // Sales Item Groups
+  getSalesItemGroups: async (restaurantId: string): Promise<SalesItemGroup[]> => {
+    const rs = await client.execute({
+      sql: "SELECT * FROM sales_item_groups WHERE restaurant_id = ? ORDER BY name",
+      args: [restaurantId]
+    });
+    return rs.rows.map(row => ({ id: row.id as string, name: row.name as string, restaurantId: row.restaurant_id as string }));
+  },
+  saveSalesItemGroup: async (g: SalesItemGroup) => {
+    await client.execute({
+      sql: "INSERT OR REPLACE INTO sales_item_groups (id, name, restaurant_id) VALUES (?, ?, ?)",
+      args: [g.id, g.name, g.restaurantId]
+    });
+  },
+  deleteSalesItemGroup: async (id: string) => {
+    await client.batch([
+      { sql: "UPDATE sales_items SET group_id = NULL WHERE group_id = ?", args: [id] },
+      { sql: "DELETE FROM sales_item_groups WHERE id = ?", args: [id] }
+    ], "write");
   },
 
   // Materials
-  getMaterials: async (): Promise<Material[]> => {
-    const rs = await client.execute("SELECT * FROM materials ORDER BY name");
-    return rs.rows.map(row => ({ id: row.id as string, name: row.name as string, unit: row.unit as string }));
+  getMaterials: async (restaurantId: string): Promise<Material[]> => {
+    const rs = await client.execute({
+      sql: "SELECT * FROM materials WHERE restaurant_id = ? ORDER BY name",
+      args: [restaurantId]
+    });
+    return rs.rows.map(row => ({ 
+      id: row.id as string, 
+      name: row.name as string, 
+      unit: row.unit as string,
+      groupId: row.group_id as string || undefined,
+      restaurantId: row.restaurant_id as string
+    }));
   },
   saveMaterial: async (m: Material) => {
     await client.execute({
-      sql: "INSERT OR REPLACE INTO materials (id, name, unit) VALUES (?, ?, ?)",
-      args: [m.id, m.name, m.unit]
+      sql: "INSERT OR REPLACE INTO materials (id, name, unit, group_id, restaurant_id) VALUES (?, ?, ?, ?, ?)",
+      args: [m.id, m.name, m.unit, m.groupId || null, m.restaurantId]
     });
   },
   deleteMaterial: async (id: string) => {
@@ -64,14 +222,22 @@ export const db = {
   },
 
   // Sales Items
-  getItems: async (): Promise<SalesItem[]> => {
-    const rs = await client.execute("SELECT * FROM sales_items ORDER BY name");
-    return rs.rows.map(row => ({ id: row.id as string, name: row.name as string }));
+  getItems: async (restaurantId: string): Promise<SalesItem[]> => {
+    const rs = await client.execute({
+      sql: "SELECT * FROM sales_items WHERE restaurant_id = ? ORDER BY name",
+      args: [restaurantId]
+    });
+    return rs.rows.map(row => ({ 
+      id: row.id as string, 
+      name: row.name as string,
+      groupId: row.group_id as string || undefined,
+      restaurantId: row.restaurant_id as string
+    }));
   },
   saveItem: async (i: SalesItem) => {
     await client.execute({
-      sql: "INSERT OR REPLACE INTO sales_items (id, name) VALUES (?, ?)",
-      args: [i.id, i.name]
+      sql: "INSERT OR REPLACE INTO sales_items (id, name, group_id, restaurant_id) VALUES (?, ?, ?, ?)",
+      args: [i.id, i.name, i.groupId || null, i.restaurantId]
     });
   },
   deleteItem: async (id: string) => {
@@ -82,14 +248,18 @@ export const db = {
   },
 
   // Recipes
-  getRecipes: async (): Promise<Recipe[]> => {
-    const rs = await client.execute("SELECT * FROM recipes");
+  getRecipes: async (restaurantId: string): Promise<Recipe[]> => {
+    const rs = await client.execute({
+      sql: "SELECT * FROM recipes WHERE restaurant_id = ?",
+      args: [restaurantId]
+    });
     const grouped: Record<string, Recipe> = {};
     rs.rows.forEach(row => {
       const itemId = row.item_id as string;
-      if (!grouped[itemId]) grouped[itemId] = { itemId, ingredients: [] };
+      if (!grouped[itemId]) grouped[itemId] = { itemId, ingredients: [], restaurantId: row.restaurant_id as string };
       grouped[itemId].ingredients.push({
-        materialId: row.material_id as string,
+        materialId: row.material_id as string || undefined,
+        subItemId: row.sub_item_id as string || undefined,
         quantity: row.quantity as number
       });
     });
@@ -97,29 +267,39 @@ export const db = {
   },
   saveRecipe: async (recipe: Recipe) => {
     const queries = [
-      { sql: "DELETE FROM recipes WHERE item_id = ?", args: [recipe.itemId] },
+      { sql: "DELETE FROM recipes WHERE item_id = ? AND restaurant_id = ?", args: [recipe.itemId, recipe.restaurantId] },
       ...recipe.ingredients.map(ing => ({
-        sql: "INSERT INTO recipes (item_id, material_id, quantity) VALUES (?, ?, ?)",
-        args: [recipe.itemId, ing.materialId, ing.quantity]
+        sql: "INSERT INTO recipes (item_id, material_id, sub_item_id, quantity, restaurant_id) VALUES (?, ?, ?, ?, ?)",
+        args: [
+          recipe.itemId, 
+          ing.materialId || null, 
+          ing.subItemId || null, 
+          ing.quantity, 
+          recipe.restaurantId
+        ]
       }))
     ];
     await client.batch(queries, "write");
   },
 
   // Sales
-  getSales: async (): Promise<SaleEntry[]> => {
-    const rs = await client.execute("SELECT id, item_id as itemId, quantity_sold as quantitySold, sale_date as date FROM sales ORDER BY sale_date DESC");
+  getSales: async (restaurantId: string): Promise<SaleEntry[]> => {
+    const rs = await client.execute({
+      sql: "SELECT id, item_id as itemId, quantity_sold as quantitySold, sale_date as date, restaurant_id as restaurantId FROM sales WHERE restaurant_id = ? ORDER BY sale_date DESC",
+      args: [restaurantId]
+    });
     return rs.rows.map(row => ({
       id: row.id as string,
       itemId: row.itemId as string,
       quantitySold: row.quantitySold as number,
-      date: row.date as string
+      date: row.date as string,
+      restaurantId: row.restaurantId as string
     }));
   },
   saveSales: async (newSales: SaleEntry[]) => {
     const queries = newSales.map(s => ({
-      sql: "INSERT INTO sales (id, item_id, quantity_sold, sale_date) VALUES (?, ?, ?, ?)",
-      args: [s.id, s.itemId, s.quantitySold, s.date]
+      sql: "INSERT INTO sales (id, item_id, quantity_sold, sale_date, restaurant_id) VALUES (?, ?, ?, ?, ?)",
+      args: [s.id, s.itemId, s.quantitySold, s.date, s.restaurantId]
     }));
     await client.batch(queries, "write");
   },

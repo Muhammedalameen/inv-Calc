@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Calculator, Save, Package, UtensilsCrossed, ArrowRightLeft, Info, ChefHat } from 'lucide-react';
+import { Plus, Trash2, Calculator, Save, Package, UtensilsCrossed, ArrowRightLeft, Info, ChefHat, Printer } from 'lucide-react';
 import { SalesItem, Material, Recipe, RecipeIngredient } from '../types';
 
 interface Props {
@@ -94,120 +94,180 @@ const RecipeBuilderPage: React.FC<Props> = ({ items, materials, recipes, onSave 
     setIsSaving(false);
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const selectedItemName = items.find(i => i.id === selectedItemId)?.name;
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 transition-colors">
-        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">اختر الصنف الرئيسي لتعديل وصفته:</label>
-        <select
-          className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 bg-white dark:bg-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 font-medium transition-colors"
-          value={selectedItemId} onChange={(e) => setSelectedItemId(e.target.value)}
-        >
-          <option value="">-- اختر صنفاً --</option>
-          {items.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-        </select>
-      </div>
+      {/* Interactive View (Hidden on Print) */}
+      <div className="print:hidden space-y-6">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 transition-colors">
+          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">اختر الصنف الرئيسي لتعديل وصفته:</label>
+          <select
+            className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 bg-white dark:bg-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 font-medium transition-colors"
+            value={selectedItemId} onChange={(e) => setSelectedItemId(e.target.value)}
+          >
+            <option value="">-- اختر صنفاً --</option>
+            {items.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+          </select>
+        </div>
 
-      {selectedItemId && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in slide-in-from-bottom-2 transition-colors">
-          <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center bg-slate-50/50 dark:bg-slate-800/50 gap-4">
-            <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
-              وصفة: <span className="text-emerald-600 dark:text-emerald-400">{items.find(i => i.id === selectedItemId)?.name}</span>
-            </h3>
-            <div className="flex flex-wrap gap-2">
-               <button onClick={() => addIngredient('material')} className="flex items-center gap-2 text-xs bg-slate-800 dark:bg-slate-700 text-white px-4 py-2 rounded-xl font-bold hover:bg-slate-700 transition-colors"><Package className="w-3.5 h-3.5" /> إضافة خامة</button>
-               <button onClick={() => addIngredient('item')} className="flex items-center gap-2 text-xs bg-blue-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-blue-700 transition-colors"><ChefHat className="w-3.5 h-3.5" /> إضافة صنف مجهز</button>
-               <button onClick={handleSave} disabled={isSaving} className="flex items-center gap-2 text-sm bg-emerald-500 text-white px-6 py-2 rounded-xl font-bold shadow-lg shadow-emerald-500/20 disabled:bg-slate-300 transition-all hover:scale-105 active:scale-95"><Save className="w-4 h-4" /> {isSaving ? 'جاري الحفظ...' : 'حفظ الوصفة'}</button>
+        {selectedItemId && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in slide-in-from-bottom-2 transition-colors">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center bg-slate-50/50 dark:bg-slate-800/50 gap-4">
+              <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                وصفة: <span className="text-emerald-600 dark:text-emerald-400">{selectedItemName}</span>
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                 <button onClick={() => addIngredient('material')} className="flex items-center gap-2 text-xs bg-slate-800 dark:bg-slate-700 text-white px-4 py-2 rounded-xl font-bold hover:bg-slate-700 transition-colors"><Package className="w-3.5 h-3.5" /> إضافة خامة</button>
+                 <button onClick={() => addIngredient('item')} className="flex items-center gap-2 text-xs bg-blue-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-blue-700 transition-colors"><ChefHat className="w-3.5 h-3.5" /> إضافة صنف مجهز</button>
+                 <button onClick={handlePrint} className="flex items-center gap-2 text-xs bg-slate-100 text-slate-700 border border-slate-300 px-4 py-2 rounded-xl font-bold hover:bg-slate-200 transition-colors"><Printer className="w-3.5 h-3.5" /> طباعة / PDF</button>
+                 <button onClick={handleSave} disabled={isSaving} className="flex items-center gap-2 text-sm bg-emerald-500 text-white px-6 py-2 rounded-xl font-bold shadow-lg shadow-emerald-500/20 disabled:bg-slate-300 transition-all hover:scale-105 active:scale-95"><Save className="w-4 h-4" /> {isSaving ? 'جاري الحفظ...' : 'حفظ الوصفة'}</button>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              {localIngredients.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 dark:text-slate-600"><Calculator className="w-12 h-12 mx-auto mb-3 opacity-20" /><p>لا توجد مكونات في هذه الوصفة. ابدأ بإضافة خامات أو أصناف مجهزة.</p></div>
+              ) : (
+                localIngredients.map((ing, idx) => {
+                  const isSubItem = !!ing.subItemId;
+                  const subRecipe = isSubItem ? getSubItemRecipe(ing.subItemId!) : null;
+
+                  return (
+                    <div key={idx} className={`flex flex-col md:flex-row gap-4 items-start p-4 rounded-xl border transition-all ${
+                      isSubItem 
+                        ? 'bg-blue-50/40 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800/40 shadow-sm' 
+                        : 'bg-slate-50/50 border-slate-100 dark:bg-slate-800/30 dark:border-slate-800/50'
+                    }`}>
+                      <div className="flex-1 w-full">
+                        <div className="flex items-center justify-between mb-1 mr-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            {isSubItem ? (
+                              <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
+                                <ChefHat className="w-3.5 h-3.5" /> صنف مجهز (وصفة فرعية)
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1">
+                                <Package className="w-3.5 h-3.5 text-slate-500" /> خامة أساسية
+                              </span>
+                            )}
+                          </label>
+                          <button onClick={() => toggleType(idx)} className="text-[10px] text-emerald-500 hover:underline flex items-center gap-1 font-bold">
+                            <ArrowRightLeft className="w-3 h-3" /> تبديل النوع
+                          </button>
+                        </div>
+                        <div className="flex gap-2 items-center">
+                          <select 
+                            className={`w-full border rounded-xl px-4 py-2.5 bg-white dark:bg-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 transition-colors ${
+                              isSubItem ? 'border-blue-200 dark:border-blue-800 font-bold' : 'border-slate-200 dark:border-slate-700'
+                            }`} 
+                            value={isSubItem ? ing.subItemId : ing.materialId} 
+                            onChange={(e) => updateIngredient(idx, isSubItem ? 'subItemId' : 'materialId', e.target.value)}
+                          >
+                            {isSubItem ? (
+                              items.filter(i => i.id !== selectedItemId).map(i => <option key={i.id} value={i.id}>{i.name}</option>)
+                            ) : (
+                              materials.map(m => <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)
+                            )}
+                          </select>
+
+                          {isSubItem && (
+                            <div className="relative group">
+                              <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg cursor-help hover:bg-blue-200 transition-colors">
+                                <Info className="w-4 h-4" />
+                              </div>
+                              {/* Preview Tooltip */}
+                              <div className="invisible group-hover:visible absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-3 w-56 bg-slate-800 text-white p-3 rounded-xl shadow-2xl border border-slate-700 animate-in fade-in zoom-in-95 duration-200 pointer-events-none">
+                                <p className="font-bold border-b border-slate-700 pb-1.5 mb-2 text-[10px] text-blue-300">مكونات الصنف المختار:</p>
+                                {subRecipe && subRecipe.length > 0 ? (
+                                  <ul className="space-y-1">
+                                    {subRecipe.map((r, i) => (
+                                      <li key={i} className="flex justify-between items-center text-[9px] text-slate-300">
+                                        <span>{r.name}</span>
+                                        <span className="font-mono text-blue-200">{r.quantity}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <p className="text-[9px] italic text-rose-400">لا توجد وصفة مسجلة لهذا الصنف</p>
+                                )}
+                                <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-800"></div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="w-full md:w-48">
+                        <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 mb-1 mr-1">الكمية لكل وحدة</label>
+                        <input 
+                          type="number" step="any"
+                          className={`w-full border rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-slate-800 dark:text-white font-mono font-bold transition-colors ${
+                            isSubItem ? 'border-blue-200 dark:border-blue-800' : 'border-slate-200 dark:border-slate-700'
+                          }`} 
+                          value={ing.quantity} 
+                          onChange={(e) => updateIngredient(idx, 'quantity', e.target.value)} 
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <button onClick={() => removeIngredient(idx)} className="p-2.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl md:mt-5 self-end transition-colors"><Trash2 className="w-5 h-5" /></button>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
-          <div className="p-6 space-y-4">
-            {localIngredients.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 dark:text-slate-600"><Calculator className="w-12 h-12 mx-auto mb-3 opacity-20" /><p>لا توجد مكونات في هذه الوصفة. ابدأ بإضافة خامات أو أصناف مجهزة.</p></div>
-            ) : (
-              localIngredients.map((ing, idx) => {
-                const isSubItem = !!ing.subItemId;
-                const subRecipe = isSubItem ? getSubItemRecipe(ing.subItemId!) : null;
+        )}
+      </div>
 
-                return (
-                  <div key={idx} className={`flex flex-col md:flex-row gap-4 items-start p-4 rounded-xl border transition-all ${
-                    isSubItem 
-                      ? 'bg-blue-50/40 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800/40 shadow-sm' 
-                      : 'bg-slate-50/50 border-slate-100 dark:bg-slate-800/30 dark:border-slate-800/50'
-                  }`}>
-                    <div className="flex-1 w-full">
-                      <div className="flex items-center justify-between mb-1 mr-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                          {isSubItem ? (
-                            <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
-                              <ChefHat className="w-3.5 h-3.5" /> صنف مجهز (وصفة فرعية)
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-1">
-                              <Package className="w-3.5 h-3.5 text-slate-500" /> خامة أساسية
-                            </span>
-                          )}
-                        </label>
-                        <button onClick={() => toggleType(idx)} className="text-[10px] text-emerald-500 hover:underline flex items-center gap-1 font-bold">
-                          <ArrowRightLeft className="w-3 h-3" /> تبديل النوع
-                        </button>
-                      </div>
-                      <div className="flex gap-2 items-center">
-                        <select 
-                          className={`w-full border rounded-xl px-4 py-2.5 bg-white dark:bg-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 transition-colors ${
-                            isSubItem ? 'border-blue-200 dark:border-blue-800 font-bold' : 'border-slate-200 dark:border-slate-700'
-                          }`} 
-                          value={isSubItem ? ing.subItemId : ing.materialId} 
-                          onChange={(e) => updateIngredient(idx, isSubItem ? 'subItemId' : 'materialId', e.target.value)}
-                        >
-                          {isSubItem ? (
-                            items.filter(i => i.id !== selectedItemId).map(i => <option key={i.id} value={i.id}>{i.name}</option>)
-                          ) : (
-                            materials.map(m => <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)
-                          )}
-                        </select>
+      {/* Printable View (Visible Only on Print) */}
+      {selectedItemId && (
+        <div className="hidden print:block bg-white p-8">
+          <div className="text-center mb-8 border-b-2 border-slate-800 pb-4">
+            <h1 className="text-3xl font-bold mb-2">بطاقة وصفة فنية</h1>
+            <h2 className="text-xl text-slate-600">الصنف: {selectedItemName}</h2>
+          </div>
 
-                        {isSubItem && (
-                          <div className="relative group">
-                            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg cursor-help hover:bg-blue-200 transition-colors">
-                              <Info className="w-4 h-4" />
-                            </div>
-                            {/* Preview Tooltip */}
-                            <div className="invisible group-hover:visible absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-3 w-56 bg-slate-800 text-white p-3 rounded-xl shadow-2xl border border-slate-700 animate-in fade-in zoom-in-95 duration-200 pointer-events-none">
-                              <p className="font-bold border-b border-slate-700 pb-1.5 mb-2 text-[10px] text-blue-300">مكونات الصنف المختار:</p>
-                              {subRecipe && subRecipe.length > 0 ? (
-                                <ul className="space-y-1">
-                                  {subRecipe.map((r, i) => (
-                                    <li key={i} className="flex justify-between items-center text-[9px] text-slate-300">
-                                      <span>{r.name}</span>
-                                      <span className="font-mono text-blue-200">{r.quantity}</span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <p className="text-[9px] italic text-rose-400">لا توجد وصفة مسجلة لهذا الصنف</p>
-                              )}
-                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-800"></div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="w-full md:w-48">
-                      <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 mb-1 mr-1">الكمية لكل وحدة</label>
-                      <input 
-                        type="number" step="any"
-                        className={`w-full border rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-slate-800 dark:text-white font-mono font-bold transition-colors ${
-                          isSubItem ? 'border-blue-200 dark:border-blue-800' : 'border-slate-200 dark:border-slate-700'
-                        }`} 
-                        value={ing.quantity} 
-                        onChange={(e) => updateIngredient(idx, 'quantity', e.target.value)} 
-                        placeholder="0.00"
-                      />
-                    </div>
-                    <button onClick={() => removeIngredient(idx)} className="p-2.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl md:mt-5 self-end transition-colors"><Trash2 className="w-5 h-5" /></button>
-                  </div>
-                );
-              })
-            )}
+          <table className="w-full text-right border-collapse">
+            <thead>
+              <tr className="border-b border-slate-300">
+                <th className="py-2 text-sm font-bold text-slate-500">النوع</th>
+                <th className="py-2 text-sm font-bold text-slate-500">المكون</th>
+                <th className="py-2 text-sm font-bold text-slate-500">الكمية</th>
+                <th className="py-2 text-sm font-bold text-slate-500">الوحدة</th>
+              </tr>
+            </thead>
+            <tbody>
+              {localIngredients.length > 0 ? (
+                localIngredients.map((ing, idx) => {
+                  const isSubItem = !!ing.subItemId;
+                  const material = materials.find(m => m.id === ing.materialId);
+                  const item = items.find(i => i.id === ing.subItemId);
+                  const name = isSubItem ? item?.name : material?.name;
+                  const unit = isSubItem ? 'وحدة (صنف مجهز)' : material?.unit;
+
+                  return (
+                    <tr key={idx} className="border-b border-slate-100">
+                      <td className="py-3 text-sm">
+                         {isSubItem ? <span className="font-bold">صنف مجهز</span> : <span>خامة أولية</span>}
+                      </td>
+                      <td className="py-3 font-bold">{name}</td>
+                      <td className="py-3 font-mono text-lg">{ing.quantity}</td>
+                      <td className="py-3 text-sm text-slate-500">{unit}</td>
+                    </tr>
+                  );
+                })
+              ) : (
+                 <tr><td colSpan={4} className="py-6 text-center text-slate-400">لا توجد مكونات مسجلة</td></tr>
+              )}
+            </tbody>
+          </table>
+          
+          <div className="mt-12 pt-4 border-t border-slate-200 flex justify-between text-xs text-slate-400">
+             <span>تمت الطباعة من نظام CulinaTrack</span>
+             <span>{new Date().toLocaleDateString('ar-EG')}</span>
           </div>
         </div>
       )}

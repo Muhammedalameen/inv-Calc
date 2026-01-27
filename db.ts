@@ -24,20 +24,15 @@ export const initDb = async () => {
     ], "write");
 
     // 2. Migration: Add columns if they were missing from a previous schema version
-    // This is necessary because CREATE TABLE IF NOT EXISTS doesn't update existing schemas if they were created with fewer columns.
     const migrateColumn = async (table: string, column: string, type: string) => {
       try {
         await client.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
       } catch (e: any) {
-        // SQLite will throw an error if the column already exists. 
-        // We log non-duplicate errors but otherwise proceed.
         if (!e.message?.toLowerCase().includes("duplicate column name")) {
-          // It's likely the column already exists if we hit an error here
         }
       }
     };
 
-    // Sequential list of potential migrations to ensure the DB is in the latest state.
     await migrateColumn("material_groups", "restaurant_id", "TEXT");
     await migrateColumn("sales_item_groups", "restaurant_id", "TEXT");
     await migrateColumn("materials", "restaurant_id", "TEXT");
@@ -49,7 +44,7 @@ export const initDb = async () => {
     await migrateColumn("recipes", "material_id", "TEXT");
     await migrateColumn("sales", "restaurant_id", "TEXT");
 
-    // 3. Create indices for performance and to verify the columns now exist
+    // 3. Create indices for performance
     try {
       await client.execute("CREATE INDEX IF NOT EXISTS idx_recipes_item ON recipes(item_id, restaurant_id)");
       await client.execute("CREATE INDEX IF NOT EXISTS idx_sales_restaurant ON sales(restaurant_id)");
@@ -75,7 +70,6 @@ export const db = {
     });
   },
   deleteRestaurant: async (id: string) => {
-    // Delete all associated data
     await client.batch([
       { sql: "DELETE FROM sales WHERE restaurant_id = ?", args: [id] },
       { sql: "DELETE FROM recipes WHERE restaurant_id = ?", args: [id] },
@@ -85,6 +79,79 @@ export const db = {
       { sql: "DELETE FROM material_groups WHERE restaurant_id = ?", args: [id] },
       { sql: "DELETE FROM restaurants WHERE id = ?", args: [id] }
     ], "write");
+  },
+
+  // Clone Restaurant Implementation
+  cloneRestaurant: async (sourceId: string, newName: string) => {
+    const targetId = crypto.randomUUID();
+    
+    await client.execute({
+      sql: "INSERT INTO restaurants (id, name) VALUES (?, ?)",
+      args: [targetId, newName]
+    });
+
+    const materialGroupMap = new Map<string, string>();
+    const salesItemGroupMap = new Map<string, string>();
+    const materialMap = new Map<string, string>();
+    const salesItemMap = new Map<string, string>();
+
+    const oldMatGroups = await client.execute({ sql: "SELECT * FROM material_groups WHERE restaurant_id = ?", args: [sourceId] });
+    for (const row of oldMatGroups.rows) {
+      const newId = crypto.randomUUID();
+      materialGroupMap.set(row.id as string, newId);
+      await client.execute({
+        sql: "INSERT INTO material_groups (id, name, restaurant_id) VALUES (?, ?, ?)",
+        args: [newId, row.name, targetId]
+      });
+    }
+
+    const oldItemGroups = await client.execute({ sql: "SELECT * FROM sales_item_groups WHERE restaurant_id = ?", args: [sourceId] });
+    for (const row of oldItemGroups.rows) {
+      const newId = crypto.randomUUID();
+      salesItemGroupMap.set(row.id as string, newId);
+      await client.execute({
+        sql: "INSERT INTO sales_item_groups (id, name, restaurant_id) VALUES (?, ?, ?)",
+        args: [newId, row.name, targetId]
+      });
+    }
+
+    const oldMaterials = await client.execute({ sql: "SELECT * FROM materials WHERE restaurant_id = ?", args: [sourceId] });
+    for (const row of oldMaterials.rows) {
+      const newId = crypto.randomUUID();
+      materialMap.set(row.id as string, newId);
+      const newGroupId = row.group_id ? materialGroupMap.get(row.group_id as string) : null;
+      await client.execute({
+        sql: "INSERT INTO materials (id, name, unit, group_id, restaurant_id) VALUES (?, ?, ?, ?, ?)",
+        args: [newId, row.name, row.unit, newGroupId, targetId]
+      });
+    }
+
+    const oldItems = await client.execute({ sql: "SELECT * FROM sales_items WHERE restaurant_id = ?", args: [sourceId] });
+    for (const row of oldItems.rows) {
+      const newId = crypto.randomUUID();
+      salesItemMap.set(row.id as string, newId);
+      const newGroupId = row.group_id ? salesItemGroupMap.get(row.group_id as string) : null;
+      await client.execute({
+        sql: "INSERT INTO sales_items (id, name, group_id, restaurant_id) VALUES (?, ?, ?, ?)",
+        args: [newId, row.name, newGroupId, targetId]
+      });
+    }
+
+    const oldRecipes = await client.execute({ sql: "SELECT * FROM recipes WHERE restaurant_id = ?", args: [sourceId] });
+    for (const row of oldRecipes.rows) {
+      const newItemId = salesItemMap.get(row.item_id as string);
+      const newMatId = row.material_id ? materialMap.get(row.material_id as string) : null;
+      const newSubItemId = row.sub_item_id ? salesItemMap.get(row.sub_item_id as string) : null;
+      
+      if (newItemId) {
+        await client.execute({
+          sql: "INSERT INTO recipes (item_id, material_id, sub_item_id, quantity, restaurant_id) VALUES (?, ?, ?, ?, ?)",
+          args: [newItemId, newMatId, newSubItemId, row.quantity, targetId]
+        });
+      }
+    }
+
+    return { id: targetId, name: newName };
   },
 
   // Material Groups

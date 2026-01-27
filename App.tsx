@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChefHat, Loader2, CheckCircle2, AlertCircle, X, Store, Settings, Plus, Trash2, ArrowRight } from 'lucide-react';
+import { ChefHat, Loader2, CheckCircle2, AlertCircle, X, Store, Settings, Plus, Trash2, ArrowRight, Copy } from 'lucide-react';
 import { 
   Material, SalesItem, Recipe, SaleEntry,
   MaterialGroup, SalesItemGroup, Restaurant
@@ -28,6 +28,7 @@ const App: React.FC = () => {
   const [isManagerMode, setIsManagerMode] = useState(false);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [newRestName, setNewRestName] = useState('');
+  const [isCloning, setIsCloning] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<'materials' | 'items' | 'recipes' | 'sales' | 'reports' | 'query'>('items');
   const [isLoading, setIsLoading] = useState(true);
@@ -99,6 +100,22 @@ const App: React.FC = () => {
     addToast(`تم إنشاء مطعم "${r.name}" بنجاح`);
   };
 
+  const handleCloneRestaurant = async (id: string, name: string) => {
+    const newName = prompt(`أدخل اسم المطعم الجديد المستنسخ من "${name}":`, `${name} - نسخة`);
+    if (!newName || !newName.trim()) return;
+    
+    setIsCloning(id);
+    try {
+      const cloned = await db.cloneRestaurant(id, newName.trim());
+      setRestaurants(prev => [...prev, cloned]);
+      addToast(`تم استنساخ "${name}" إلى "${cloned.name}" بنجاح`);
+    } catch (err) {
+      addToast("فشل استنساخ المطعم", "error");
+    } finally {
+      setIsCloning(null);
+    }
+  };
+
   const handleDeleteRestaurant = async (id: string) => {
     if (confirm("سيتم حذف كافة بيانات المطعم بشكل نهائي! هل أنت متأكد؟")) {
       await db.deleteRestaurant(id);
@@ -137,7 +154,6 @@ const App: React.FC = () => {
     await db.saveMaterial(mat);
     setMaterials(prev => [...prev, mat]);
   };
-  // Fix: Changed handleUpdateMaterial parameter type to Omit<Material, 'restaurantId'>
   const handleUpdateMaterial = async (m: Omit<Material, 'restaurantId'>) => {
     if (!currentRestaurant) return;
     const mat: Material = { ...m, restaurantId: currentRestaurant.id };
@@ -155,7 +171,6 @@ const App: React.FC = () => {
     await db.saveItem(item);
     setSalesItems(prev => [...prev, item]);
   };
-  // Fix: Changed handleUpdateItem parameter type to Omit<SalesItem, 'restaurantId'>
   const handleUpdateItem = async (i: Omit<SalesItem, 'restaurantId'>) => {
     if (!currentRestaurant) return;
     const item: SalesItem = { ...i, restaurantId: currentRestaurant.id };
@@ -236,7 +251,7 @@ const App: React.FC = () => {
                 onClick={() => setIsManagerMode(true)}
                 className="w-full flex items-center justify-center gap-2 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-bold transition-colors"
               >
-                <Settings className="w-5 h-5" /> لوحة تحكم المدير (إضافة مطاعم)
+                <Settings className="w-5 h-5" /> لوحة تحكم المدير (إضافة واستنساخ مطاعم)
               </button>
             </div>
           ) : (
@@ -265,17 +280,29 @@ const App: React.FC = () => {
 
                 <div className="divide-y">
                   {restaurants.map(r => (
-                    <div key={r.id} className="py-4 flex items-center justify-between">
+                    <div key={r.id} className="py-4 flex items-center justify-between group">
                       <div className="flex items-center gap-3">
                         <Store className="w-5 h-5 text-slate-400" />
                         <span className="font-bold text-slate-700">{r.name}</span>
                       </div>
-                      <button 
-                        onClick={() => handleDeleteRestaurant(r.id)}
-                        className="p-2 text-rose-400 hover:bg-rose-50 hover:text-rose-600 rounded-lg transition-colors"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => handleCloneRestaurant(r.id, r.name)}
+                          disabled={isCloning === r.id}
+                          className="flex items-center gap-1 px-3 py-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors text-sm font-bold disabled:opacity-50"
+                          title="استنساخ المطعم"
+                        >
+                          {isCloning === r.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
+                          استنساخ
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteRestaurant(r.id)}
+                          className="p-2 text-rose-400 hover:bg-rose-50 hover:text-rose-600 rounded-lg transition-colors"
+                          title="حذف المطعم"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -287,7 +314,6 @@ const App: React.FC = () => {
     );
   }
 
-  // --- Main App Logic for Selected Restaurant ---
   const renderContent = () => {
     switch (activeTab) {
       case 'materials':
@@ -359,14 +385,12 @@ const App: React.FC = () => {
 
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-900 overflow-x-hidden" dir="rtl">
-      {/* Loading Overlay */}
       {isLoading && currentRestaurant && (
         <div className="fixed inset-0 bg-white/60 backdrop-blur-sm z-[200] flex items-center justify-center">
           <Loader2 className="w-10 h-10 text-emerald-500 animate-spin" />
         </div>
       )}
 
-      {/* Toast Container */}
       <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[300] flex flex-col gap-3 pointer-events-none">
         {toasts.map(toast => (
           <div 
