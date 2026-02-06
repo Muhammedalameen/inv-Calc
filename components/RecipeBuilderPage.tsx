@@ -104,7 +104,9 @@ const RecipeBuilderPage: React.FC<Props> = ({ items, materials, recipes, onSave,
     }
   };
 
-  const selectedItemName = items.find(i => i.id === selectedItemId)?.name;
+  const selectedItem = items.find(i => i.id === selectedItemId);
+  const selectedItemName = selectedItem?.name;
+  const selectedItemUnit = selectedItem?.unit;
 
   // Render List View
   if (view === 'list') {
@@ -353,17 +355,25 @@ const RecipeBuilderPage: React.FC<Props> = ({ items, materials, recipes, onSave,
       {selectedItemId && (
         <div className="hidden print:block bg-white p-8">
           <div className="text-center mb-8 border-b-2 border-slate-800 pb-4">
-            <h1 className="text-3xl font-bold mb-2">بطاقة وصفة فنية</h1>
-            <h2 className="text-xl text-slate-600">الصنف: {selectedItemName}</h2>
+            <h1 className="text-3xl font-bold mb-4">بطاقة وصفة فنية</h1>
+            <div className="flex justify-center items-center gap-6">
+               <h2 className="text-2xl font-bold text-slate-800 border-2 border-slate-800 px-4 py-1 rounded-lg">
+                 الصنف: {selectedItemName}
+               </h2>
+               <div className="flex items-center gap-2 bg-slate-100 border border-slate-300 px-4 py-1.5 rounded-lg">
+                  <span className="text-sm font-bold text-slate-500">الوحدة المنتجة:</span>
+                  <span className="font-bold text-lg">{selectedItemUnit || 'غير محدد'}</span>
+               </div>
+            </div>
           </div>
 
-          <table className="w-full text-right border-collapse">
+          <table className="w-full text-right border-collapse border border-slate-300">
             <thead>
-              <tr className="border-b border-slate-300">
-                <th className="py-2 text-sm font-bold text-slate-500">النوع</th>
-                <th className="py-2 text-sm font-bold text-slate-500">المكون</th>
-                <th className="py-2 text-sm font-bold text-slate-500">الكمية</th>
-                <th className="py-2 text-sm font-bold text-slate-500">الوحدة</th>
+              <tr className="bg-slate-100">
+                <th className="py-3 px-4 text-sm font-bold text-slate-700 border-b border-slate-300 w-1/4">النوع</th>
+                <th className="py-3 px-4 text-sm font-bold text-slate-700 border-b border-slate-300">المكون</th>
+                <th className="py-3 px-4 text-sm font-bold text-slate-700 border-b border-slate-300 text-center">الكمية</th>
+                <th className="py-3 px-4 text-sm font-bold text-slate-700 border-b border-slate-300">وحدة المكون</th>
               </tr>
             </thead>
             <tbody>
@@ -376,25 +386,29 @@ const RecipeBuilderPage: React.FC<Props> = ({ items, materials, recipes, onSave,
                   const unit = isSubItem ? (item?.unit || 'وحدة') : material?.unit;
 
                   return (
-                    <tr key={idx} className="border-b border-slate-100">
-                      <td className="py-3 text-sm">
-                         {isSubItem ? <span className="font-bold">صنف مجهز</span> : <span>خامة أولية</span>}
+                    <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50">
+                      <td className="py-3 px-4 text-sm">
+                         {isSubItem ? (
+                           <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded font-bold">صنف مجهز</span>
+                         ) : (
+                           <span className="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded font-bold">خامة أولية</span>
+                         )}
                       </td>
-                      <td className="py-3 font-bold">{name}</td>
-                      <td className="py-3 font-mono text-lg">{ing.quantity}</td>
-                      <td className="py-3 text-sm text-slate-500">{unit}</td>
+                      <td className="py-3 px-4 font-bold text-slate-800">{name}</td>
+                      <td className="py-3 px-4 font-mono text-lg font-bold text-center">{ing.quantity}</td>
+                      <td className="py-3 px-4 text-sm font-bold text-slate-600">{unit}</td>
                     </tr>
                   );
                 })
               ) : (
-                 <tr><td colSpan={4} className="py-6 text-center text-slate-400">لا توجد مكونات مسجلة</td></tr>
+                 <tr><td colSpan={4} className="py-8 text-center text-slate-400 italic">لا توجد مكونات مسجلة</td></tr>
               )}
             </tbody>
           </table>
           
-          <div className="mt-12 pt-4 border-t border-slate-200 flex justify-between text-xs text-slate-400">
+          <div className="mt-12 pt-4 border-t-2 border-slate-800 flex justify-between text-xs text-slate-500 font-bold">
              <span>تمت الطباعة من نظام CulinaTrack</span>
-             <span>{new Date().toLocaleDateString('ar-EG')}</span>
+             <span>تاريخ الطباعة: {new Date().toLocaleDateString('ar-EG')}</span>
           </div>
         </div>
       )}
