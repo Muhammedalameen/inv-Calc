@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Layers, List, FileSpreadsheet, Printer, ChefHat, Calendar, Filter, RotateCcw, Search, Package, Utensils, Info, HelpCircle, ChevronDown, CheckSquare, Square, Hash, X } from 'lucide-react';
+import { Layers, List, FileSpreadsheet, Printer, ChefHat, Calendar, Filter, RotateCcw, Search, Package, Utensils, Info, HelpCircle, ChevronDown, CheckSquare, Square, Hash, X, Coins } from 'lucide-react';
 import { Material, SalesItem, Recipe, SaleEntry, DetailedReportItem } from '../types';
 
 interface Props {
@@ -22,12 +22,10 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
   const [selectedMaterialId, setSelectedMaterialId] = useState<string>('');
   const [selectedItemId, setSelectedItemId] = useState<string>('');
 
-  // --- Invoice Reference Filtering State ---
   const [selectedRefNumbers, setSelectedRefNumbers] = useState<string[]>([]);
   const [isRefDropdownOpen, setIsRefDropdownOpen] = useState(false);
   const refDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (refDropdownRef.current && !refDropdownRef.current.contains(event.target as Node)) {
@@ -38,7 +36,6 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Recursive function to flatten consumption from nested recipes
   const getFlattenedConsumption = useCallback((itemId: string, multiplier: number, memo: Record<string, number> = {}, visited: Set<string> = new Set()): Record<string, number> => {
     const recipe = recipes.find(r => r.itemId === itemId);
     if (!recipe || visited.has(itemId)) return memo;
@@ -56,7 +53,6 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
     return memo;
   }, [recipes]);
 
-  // Direct ingredients for visual grouping in detailed view
   const getDirectRecipe = (itemId: string) => {
     const recipe = recipes.find(r => r.itemId === itemId);
     if (!recipe) return [];
@@ -67,15 +63,13 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
     }));
   };
 
-  // Get Unique Invoice References from all sales (Sorted Newest First)
   const uniqueReferences = useMemo(() => {
-    const refsMap = new Map<string, string>(); // Ref -> Date
+    const refsMap = new Map<string, string>(); 
     sales.forEach(s => {
       if (s.referenceNumber && !refsMap.has(s.referenceNumber)) {
         refsMap.set(s.referenceNumber, s.date);
       }
     });
-    // Convert to array and sort by date descending
     return Array.from(refsMap.entries())
       .map(([ref, date]) => ({ ref, date }))
       .sort((a, b) => b.date.localeCompare(a.date));
@@ -87,19 +81,15 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
     );
   };
 
-  // Main Filter Logic
   const filteredSales = useMemo(() => {
     return sales.filter(sale => {
       const itemMatch = selectedItemId ? sale.itemId === selectedItemId : true;
 
-      // Priority Logic: If specific invoices are selected, prioritize them over date range.
-      // If no invoices selected, fallback to date range.
       if (selectedRefNumbers.length > 0) {
         const refMatch = sale.referenceNumber && selectedRefNumbers.includes(sale.referenceNumber);
         return refMatch && itemMatch;
       }
 
-      // Default Date Range Logic
       const saleDate = sale.date;
       const dateMatch = saleDate >= startDate && saleDate <= endDate;
       return dateMatch && itemMatch;
@@ -116,6 +106,7 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
       name: m.name,
       unit: m.unit,
       total: consumptionMap[m.id] || 0,
+      totalCost: (consumptionMap[m.id] || 0) * (m.price || 0),
       id: m.id
     }));
 
@@ -136,20 +127,34 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
     Object.entries(itemSalesMap).forEach(([itemId, qtySold]) => {
       const item = items.find(i => i.id === itemId);
       if (item) {
-        const flatIngs = getFlattenedConsumption(itemId, 1);
+        const revenue = (item.price || 0) * qtySold;
+        const flatIngs = getFlattenedConsumption(itemId, 1); // Get unit consumption
+        
+        let totalCost = 0;
         const ingredients = Object.entries(flatIngs)
           .filter(([matId]) => !selectedMaterialId || matId === selectedMaterialId)
           .map(([matId, qtyPerUnit]) => {
             const mat = materials.find(m => m.id === matId);
+            const totalQty = Number(qtyPerUnit) * Number(qtySold);
+            const cost = totalQty * (mat?.price || 0);
+            totalCost += cost;
+            
             return {
               materialName: mat?.name || 'مجهول',
               unit: mat?.unit || '',
-              consumedQuantity: Number(qtyPerUnit) * Number(qtySold)
+              consumedQuantity: totalQty,
+              cost
             };
           });
 
         if (ingredients.length > 0) {
-          results.push({ itemName: item.name, quantitySold: qtySold, ingredients });
+          results.push({ 
+            itemName: item.name, 
+            quantitySold: qtySold, 
+            totalRevenue: revenue,
+            totalCost,
+            ingredients 
+          });
         }
       }
     });
@@ -173,11 +178,17 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
     let csvContent = `نظام CulinaTrack - تقرير استهلاك\nالفترة,${periodText}\n\n`;
     
     if (reportType === 'aggregated') {
-      csvContent += "الخامة,الوحدة,الإجمالي\n";
-      aggregatedData.forEach(r => csvContent += `"${r.name}","${r.unit}",${r.total.toFixed(3)}\n`);
+      csvContent += "الخامة,الوحدة,الإجمالي,التكلفة\n";
+      aggregatedData.forEach(r => csvContent += `"${r.name}","${r.unit}",${r.total.toFixed(3)},${r.totalCost.toFixed(2)}\n`);
+      const totalCost = aggregatedData.reduce((acc, r) => acc + r.totalCost, 0);
+      csvContent += `\n,,إجمالي التكلفة,${totalCost.toFixed(2)}\n`;
     } else {
-      csvContent += "الصنف,المباع,الخامة,الكمية,الوحدة\n";
-      detailedData.forEach(d => d.ingredients.forEach(ing => csvContent += `"${d.itemName}",${d.quantitySold},"${ing.materialName}",${ing.consumedQuantity.toFixed(3)},"${ing.unit}"\n`));
+      csvContent += "الصنف,المباع,الإيراد,التكلفة,الربح,الخامة,الكمية,الوحدة,تكلفة الخامة\n";
+      detailedData.forEach(d => {
+        d.ingredients.forEach(ing => {
+          csvContent += `"${d.itemName}",${d.quantitySold},${d.totalRevenue},${d.totalCost},${d.totalRevenue - d.totalCost},"${ing.materialName}",${ing.consumedQuantity.toFixed(3)},"${ing.unit}",${ing.cost.toFixed(2)}\n`;
+        });
+      });
     }
     const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
@@ -185,6 +196,8 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
     link.download = `Report_${reportType}.csv`;
     link.click();
   };
+
+  const grandTotalAggregatedCost = aggregatedData.reduce((sum, item) => sum + item.totalCost, 0);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -195,7 +208,7 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
           <div><h1 className="text-2xl font-bold">CulinaTrack</h1><p className="text-xs">نظام إدارة استهلاك المطاعم</p></div>
         </div>
         <div className="text-right">
-          <h2 className="text-xl font-bold">تقرير استهلاك الخامات</h2>
+          <h2 className="text-xl font-bold">تقرير {reportType === 'aggregated' ? 'استهلاك وتكاليف الخامات' : 'الربحية وتحليل المبيعات'}</h2>
           <p className="text-sm">
             {selectedRefNumbers.length > 0 ? `فواتير محددة: ${selectedRefNumbers.length}` : `الفترة: ${startDate} إلى ${endDate}`}
           </p>
@@ -210,7 +223,6 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
           
-          {/* Reference Number Multi-Select */}
           <div className="space-y-1.5 relative" ref={refDropdownRef}>
             <label className="text-xs font-bold text-slate-500 mr-1 flex items-center gap-1"><Hash className="w-3 h-3"/> أرقام الفواتير</label>
             <button 
@@ -227,7 +239,6 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
               <ChevronDown className="w-4 h-4 opacity-50" />
             </button>
             
-            {/* Dropdown List */}
             {isRefDropdownOpen && (
               <div className="absolute top-full right-0 w-full mt-2 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 max-h-60 overflow-y-auto">
                  {uniqueReferences.length > 0 ? (
@@ -304,7 +315,6 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
            </div>
         </div>
         
-        {/* Selected References Tags */}
         {selectedRefNumbers.length > 0 && (
            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-2 animate-in fade-in slide-in-from-top-1">
               <span className="text-xs font-bold text-slate-400 py-1">الفواتير المحددة:</span>
@@ -321,8 +331,8 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
 
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 no-print">
         <div className="flex bg-white dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm w-fit transition-colors">
-          <button onClick={() => setReportType('aggregated')} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${reportType === 'aggregated' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-500'}`}><Layers className="w-4 h-4" />تقرير تجميعي</button>
-          <button onClick={() => setReportType('detailed')} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${reportType === 'detailed' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-500'}`}><List className="w-4 h-4" />تقرير تفصيلي</button>
+          <button onClick={() => setReportType('aggregated')} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${reportType === 'aggregated' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-500'}`}><Layers className="w-4 h-4" />تجميعي (تكاليف)</button>
+          <button onClick={() => setReportType('detailed')} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${reportType === 'detailed' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-500'}`}><List className="w-4 h-4" />تفصيلي (ربحية)</button>
         </div>
         <div className="flex gap-3">
           <button onClick={exportCSV} className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 px-4 py-2 rounded-xl font-bold"><FileSpreadsheet className="w-4 h-4" />تصدير CSV</button>
@@ -334,18 +344,38 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
         <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors">
           <table className="w-full text-right">
             <thead className="bg-slate-50/50 dark:bg-slate-800/50 border-b dark:border-slate-800 text-slate-500 text-xs font-bold">
-              <tr><th className="px-6 py-4">المادة الخام النهائية</th><th className="px-6 py-4">الوحدة</th><th className="px-6 py-4 text-left">إجمالي الاستهلاك الفعلي</th></tr>
+              <tr>
+                <th className="px-6 py-4">المادة الخام النهائية</th>
+                <th className="px-6 py-4 text-center">الكمية المستهلكة</th>
+                <th className="px-6 py-4 text-center">متوسط التكلفة</th>
+                <th className="px-6 py-4 text-left">التكلفة الإجمالية</th>
+              </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {aggregatedData.map((data, i) => (
                 <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
                   <td className="px-6 py-4 font-bold text-slate-700 dark:text-slate-200">{data.name}</td>
-                  <td className="px-6 py-4 text-slate-500">{data.unit}</td>
-                  <td className="px-6 py-4 font-mono font-bold text-emerald-600 dark:text-emerald-400 text-left">{data.total.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                  <td className="px-6 py-4 text-center">
+                    <span className="font-mono font-bold">{data.total.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span> <span className="text-xs text-slate-400">{data.unit}</span>
+                  </td>
+                  <td className="px-6 py-4 text-center text-slate-400 font-mono text-xs">
+                     {(data.totalCost / data.total).toFixed(2)}
+                  </td>
+                  <td className="px-6 py-4 font-mono font-bold text-emerald-600 dark:text-emerald-400 text-left">
+                    {data.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </td>
                 </tr>
               ))}
+              {aggregatedData.length > 0 && (
+                <tr className="bg-emerald-50/50 dark:bg-emerald-900/10 font-bold border-t-2 border-emerald-100 dark:border-emerald-800">
+                  <td colSpan={3} className="px-6 py-4 text-slate-800 dark:text-slate-200">الإجمالي الكلي لتكلفة الخامات المستهلكة</td>
+                  <td className="px-6 py-4 text-left font-mono text-lg text-emerald-700 dark:text-emerald-400">
+                    {grandTotalAggregatedCost.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-sm">ر.س</span>
+                  </td>
+                </tr>
+              )}
               {aggregatedData.length === 0 && (
-                 <tr><td colSpan={3} className="px-6 py-8 text-center text-slate-400">لا توجد بيانات للعرض حسب الفلترة المحددة</td></tr>
+                 <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-400">لا توجد بيانات للعرض حسب الفلترة المحددة</td></tr>
               )}
             </tbody>
           </table>
@@ -356,6 +386,8 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
             const itemId = items.find(i => i.name === item.itemName)?.id;
             const directRecipe = itemId ? getDirectRecipe(itemId) : [];
             const hasSubItems = directRecipe.some(r => r.isSub);
+            const profit = item.totalRevenue - item.totalCost;
+            const isProfitable = profit >= 0;
 
             return (
               <div key={idx} className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors break-inside-avoid">
@@ -369,7 +401,10 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="bg-emerald-500 text-white px-3 py-1 rounded-lg text-sm font-bold">الكمية المباعة: {item.quantitySold}</span>
+                    <span className="bg-slate-700 text-white px-3 py-1 rounded-lg text-sm font-bold">المباع: {item.quantitySold}</span>
+                    <span className="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-bold">الإيراد: {item.totalRevenue.toLocaleString()} ر.س</span>
+                    <span className={`${isProfitable ? 'bg-emerald-500' : 'bg-rose-500'} text-white px-3 py-1 rounded-lg text-sm font-bold`}>الربح: {profit.toLocaleString()} ر.س</span>
+                    
                     <div className="relative group cursor-help no-print">
                       <HelpCircle className="w-5 h-5 text-slate-400" />
                       <div className="invisible group-hover:visible absolute z-50 top-full left-0 mt-2 w-64 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 p-4 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 animate-in fade-in slide-in-from-top-1 text-xs">
@@ -391,7 +426,7 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
                 </div>
                 <div className="p-4">
                   <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                    <Layers className="w-3 h-3" /> تحليل الاستهلاك الكلي (خامات خام)
+                    <Coins className="w-3 h-3" /> تفصيل تكلفة الخامات
                   </h5>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {item.ingredients.map((ing, iIdx) => (
@@ -400,9 +435,9 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
                           <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"></div>
                           <span className="text-sm font-medium text-slate-600 dark:text-slate-300">{ing.materialName}</span>
                         </div>
-                        <div className="text-left">
-                          <span className="font-mono font-bold text-slate-900 dark:text-white">{ing.consumedQuantity.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
-                          <span className="text-[10px] text-slate-400 font-bold mr-1">{ing.unit}</span>
+                        <div className="text-left flex flex-col items-end">
+                          <span className="font-mono font-bold text-slate-900 dark:text-white text-sm">{ing.cost.toLocaleString(undefined, { minimumFractionDigits: 2 })} ر.س</span>
+                          <span className="text-[9px] text-slate-400">{ing.consumedQuantity.toFixed(2)} {ing.unit}</span>
                         </div>
                       </div>
                     ))}

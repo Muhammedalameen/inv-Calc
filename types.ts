@@ -26,6 +26,7 @@ export interface Material {
   id: string;
   name: string;
   unit: string;
+  price?: number; // Cost Price per Unit
   groupId?: string;
   restaurantId: string;
 }
@@ -33,7 +34,8 @@ export interface Material {
 export interface SalesItem {
   id: string;
   name: string;
-  unit?: string; // Added unit field
+  unit?: string;
+  price?: number; // Selling Price
   groupId?: string;
   restaurantId: string;
 }
@@ -64,14 +66,18 @@ export interface AggregatedReportItem {
   materialName: string;
   unit: string;
   totalConsumption: number;
+  totalCost: number; // Added Cost
 }
 
 export interface DetailedReportItem {
   itemName: string;
   quantitySold: number;
+  totalRevenue: number; // Added Revenue
+  totalCost: number; // Added Cost
   ingredients: {
     materialName: string;
     unit: string;
     consumedQuantity: number;
+    cost: number; // Ingredient Cost
   }[];
 }

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
-import { Calculator, Package, ArrowLeftRight, Search, UtensilsCrossed, Info, ChefHat, Layers } from 'lucide-react';
+import { Calculator, Package, ArrowLeftRight, Search, UtensilsCrossed, Info, ChefHat, Layers, TrendingUp, DollarSign } from 'lucide-react';
 import { SalesItem, Material, Recipe } from '../types';
 
 interface Props {
@@ -48,9 +48,21 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
     
     return Object.entries(flattened).map(([matId, totalQty]) => {
       const mat = materials.find(m => m.id === matId);
-      return { materialName: mat?.name || 'خامة مجهولة', unit: mat?.unit || '', total: totalQty };
+      const qtyNum = Number(totalQty);
+      const cost = (mat?.price || 0) * qtyNum;
+      return { materialName: mat?.name || 'خامة مجهولة', unit: mat?.unit || '', total: qtyNum, cost, unitPrice: mat?.price || 0 };
     });
   }, [selectedItemId, queryQuantity, materials, resolveFlattenedIngredients]);
+
+  const economicAnalysis = useMemo(() => {
+     const totalCost = rawMaterialsResults.reduce((sum, r) => sum + r.cost, 0);
+     const qty = typeof queryQuantity === 'string' ? parseFloat(queryQuantity) || 0 : queryQuantity;
+     const sellingPrice = (selectedItem?.price || 0) * qty;
+     const profit = sellingPrice - totalCost;
+     const profitMargin = sellingPrice > 0 ? (profit / sellingPrice) * 100 : 0;
+     
+     return { totalCost, sellingPrice, profit, profitMargin };
+  }, [rawMaterialsResults, selectedItem, queryQuantity]);
 
   const directSubItems = useMemo(() => {
     if (!selectedItemId) return [];
@@ -71,8 +83,8 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
         <div className="flex items-center gap-3 mb-6">
           <div className="bg-blue-600 p-2 rounded-lg"><Calculator className="w-6 h-6 text-white" /></div>
           <div>
-            <h3 className="text-lg font-bold text-slate-800 dark:text-white">الاستعلام الذكي عن الاستهلاك</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400">تحليل المكونات المجهزة وتفكيكها إلى خامات أولية</p>
+            <h3 className="text-lg font-bold text-slate-800 dark:text-white">الاستعلام الذكي وتحليل التكلفة</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400">تحليل المكونات وحساب التكلفة التقديرية للإنتاج</p>
           </div>
         </div>
 
@@ -104,6 +116,43 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
       {selectedItemId ? (
         itemRecipe ? (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            
+            {/* Economic Analysis Card */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center gap-2 text-slate-500 mb-2">
+                  <Package className="w-4 h-4" /> <span className="text-xs font-bold">إجمالي تكلفة الخامات</span>
+                </div>
+                <div className="text-2xl font-bold text-slate-800 dark:text-white font-mono">
+                  {economicAnalysis.totalCost.toLocaleString(undefined, { maximumFractionDigits: 2 })} <span className="text-xs opacity-50">ر.س</span>
+                </div>
+              </div>
+              
+              <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center gap-2 text-blue-500 mb-2">
+                  <DollarSign className="w-4 h-4" /> <span className="text-xs font-bold">سعر البيع المتوقع</span>
+                </div>
+                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400 font-mono">
+                  {economicAnalysis.sellingPrice > 0 ? economicAnalysis.sellingPrice.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '-'} <span className="text-xs opacity-50">ر.س</span>
+                </div>
+              </div>
+
+              <div className={`p-5 rounded-2xl border shadow-sm flex flex-col justify-between ${economicAnalysis.profit >= 0 ? 'bg-emerald-50 border-emerald-100 dark:bg-emerald-900/10 dark:border-emerald-800' : 'bg-rose-50 border-rose-100 dark:bg-rose-900/10 dark:border-rose-800'}`}>
+                <div className={`flex items-center gap-2 mb-2 ${economicAnalysis.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  <TrendingUp className="w-4 h-4" /> <span className="text-xs font-bold">الربح التقديري (الهامش)</span>
+                </div>
+                <div className={`text-2xl font-bold font-mono ${economicAnalysis.profit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>
+                  {economicAnalysis.sellingPrice > 0 ? (
+                    <>
+                       {economicAnalysis.profit.toLocaleString(undefined, { maximumFractionDigits: 2 })} <span className="text-xs opacity-70">({economicAnalysis.profitMargin.toFixed(1)}%)</span>
+                    </>
+                  ) : (
+                    <span className="text-sm">يرجى تحديد سعر البيع</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {/* Direct Sub-Items Section */}
             {directSubItems.length > 0 && (
               <div className="bg-blue-50/50 dark:bg-blue-900/10 rounded-2xl border border-blue-100 dark:border-blue-800/50 overflow-hidden">
@@ -130,14 +179,8 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
                      <Layers className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                    </div>
                    <div>
-                     <h4 className="font-bold text-slate-800 dark:text-white text-base">الخامات النهائية المستهلكة (التفكيك الكامل)</h4>
-                     <p className="text-[10px] text-slate-500 dark:text-slate-400">إجمالي كميات المواد الخام الأصلية المطلوبة بعد تحليل كافة الوصفات الفرعية</p>
-                   </div>
-                </div>
-                <div className="relative group">
-                   <Info className="w-5 h-5 text-slate-400 cursor-help" />
-                   <div className="invisible group-hover:visible absolute left-0 bottom-full mb-2 w-64 p-3 bg-slate-800 text-white rounded-xl text-[10px] shadow-2xl z-50">
-                     يتم في هذا الجدول حساب صافي المواد الخام المطلوبة للكمية المحددة، من خلال الدخول في عمق كل صنف مجهز وتحويله لمكوناته الخام.
+                     <h4 className="font-bold text-slate-800 dark:text-white text-base">تحليل الخامات النهائية والتكلفة</h4>
+                     <p className="text-[10px] text-slate-500 dark:text-slate-400">تفصيل الكميات وتكلفة كل خامة بناءً على متوسط سعر الشراء</p>
                    </div>
                 </div>
               </div>
@@ -147,7 +190,9 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
                   <thead className="bg-slate-50/50 dark:bg-slate-800/20 text-slate-500 dark:text-slate-400 text-xs font-bold uppercase border-b border-slate-100 dark:border-slate-800">
                     <tr>
                       <th className="px-6 py-4">اسم المادة الخام</th>
-                      <th className="px-6 py-4 text-left">إجمالي الكمية الصافية</th>
+                      <th className="px-6 py-4 text-center">الكمية الصافية</th>
+                      <th className="px-6 py-4 text-center">سعر الوحدة</th>
+                      <th className="px-6 py-4 text-left">التكلفة الإجمالية</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -159,14 +204,29 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
                             <span className="font-bold text-slate-700 dark:text-slate-200">{res.materialName}</span>
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-left">
-                          <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-lg">
+                        <td className="px-6 py-4 text-center">
+                          <span className="font-mono font-bold text-slate-700 dark:text-slate-300 text-sm">
                             {res.total.toLocaleString(undefined, { minimumFractionDigits: 3 })}
                           </span>
-                          <span className="mr-1.5 text-xs text-slate-400 font-bold uppercase">{res.unit}</span>
+                          <span className="mr-1.5 text-[10px] text-slate-400 font-bold">{res.unit}</span>
+                        </td>
+                        <td className="px-6 py-4 text-center text-sm font-mono text-slate-500">
+                           {res.unitPrice > 0 ? res.unitPrice.toFixed(2) : '-'}
+                        </td>
+                        <td className="px-6 py-4 text-left">
+                          <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-sm">
+                            {res.cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </span>
+                          <span className="mr-1 text-[10px] opacity-50">ر.س</span>
                         </td>
                       </tr>
                     ))}
+                    <tr className="bg-slate-50 dark:bg-slate-800/50 font-bold border-t border-slate-200 dark:border-slate-700">
+                      <td colSpan={3} className="px-6 py-4 text-slate-600 dark:text-slate-300">الإجمالي الكلي لتكلفة الخامات</td>
+                      <td className="px-6 py-4 text-left font-mono text-lg text-emerald-700 dark:text-emerald-400">
+                        {economicAnalysis.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-xs">ر.س</span>
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -177,7 +237,7 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
             <UtensilsCrossed className="w-16 h-16 text-rose-500 opacity-50" />
             <div>
               <h4 className="font-bold text-rose-800 dark:text-rose-400 text-lg">لا توجد وصفة مسجلة</h4>
-              <p className="text-sm text-rose-600 dark:text-rose-500 mt-1 max-w-sm">يرجى الذهاب إلى صفحة "إدارة الوصفات" لإعداد مكونات هذا الصنف أولاً ليتمكن النظام من تحليل الاستهلاك.</p>
+              <p className="text-sm text-rose-600 dark:text-rose-500 mt-1 max-w-sm">يرجى الذهاب إلى صفحة "إدارة الوصفات" لإعداد مكونات هذا الصنف أولاً ليتمكن النظام من تحليل الاستهلاك والتكاليف.</p>
             </div>
           </div>
         )
@@ -186,7 +246,7 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
           <div className="bg-white dark:bg-slate-800 p-6 rounded-full shadow-sm">
             <Search className="w-12 h-12 opacity-20" />
           </div>
-          <p className="font-bold text-lg">اختر صنفاً مبيعات لبدء تحليل الاستهلاك الفعلي</p>
+          <p className="font-bold text-lg">اختر صنفاً مبيعات لبدء تحليل التكلفة والأرباح</p>
         </div>
       )}
     </div>

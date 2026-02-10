@@ -17,8 +17,8 @@ export const initDb = async () => {
       "CREATE TABLE IF NOT EXISTS restaurants (id TEXT PRIMARY KEY, name TEXT NOT NULL)",
       "CREATE TABLE IF NOT EXISTS material_groups (id TEXT PRIMARY KEY, name TEXT NOT NULL, restaurant_id TEXT)",
       "CREATE TABLE IF NOT EXISTS sales_item_groups (id TEXT PRIMARY KEY, name TEXT NOT NULL, restaurant_id TEXT)",
-      "CREATE TABLE IF NOT EXISTS materials (id TEXT PRIMARY KEY, name TEXT, unit TEXT, group_id TEXT, restaurant_id TEXT)",
-      "CREATE TABLE IF NOT EXISTS sales_items (id TEXT PRIMARY KEY, name TEXT, unit TEXT, group_id TEXT, restaurant_id TEXT)",
+      "CREATE TABLE IF NOT EXISTS materials (id TEXT PRIMARY KEY, name TEXT, unit TEXT, price REAL, group_id TEXT, restaurant_id TEXT)",
+      "CREATE TABLE IF NOT EXISTS sales_items (id TEXT PRIMARY KEY, name TEXT, unit TEXT, price REAL, group_id TEXT, restaurant_id TEXT)",
       "CREATE TABLE IF NOT EXISTS recipes (item_id TEXT, material_id TEXT, sub_item_id TEXT, quantity REAL, restaurant_id TEXT)",
       "CREATE TABLE IF NOT EXISTS sales (id TEXT PRIMARY KEY, item_id TEXT, quantity_sold INTEGER, sale_date TEXT, restaurant_id TEXT)"
     ], "write");
@@ -39,15 +39,17 @@ export const initDb = async () => {
     await migrateColumn("sales_item_groups", "restaurant_id", "TEXT");
     await migrateColumn("materials", "restaurant_id", "TEXT");
     await migrateColumn("materials", "group_id", "TEXT");
+    await migrateColumn("materials", "price", "REAL"); // Cost Price
     await migrateColumn("sales_items", "restaurant_id", "TEXT");
     await migrateColumn("sales_items", "group_id", "TEXT");
-    await migrateColumn("sales_items", "unit", "TEXT"); // New column for Unit
+    await migrateColumn("sales_items", "unit", "TEXT"); 
+    await migrateColumn("sales_items", "price", "REAL"); // Selling Price
     await migrateColumn("recipes", "restaurant_id", "TEXT");
     await migrateColumn("recipes", "sub_item_id", "TEXT");
     await migrateColumn("recipes", "material_id", "TEXT");
     await migrateColumn("sales", "restaurant_id", "TEXT");
-    await migrateColumn("sales", "reference_number", "TEXT"); // New Reference Number
-    await migrateColumn("sales", "timestamp", "INTEGER"); // New Timestamp
+    await migrateColumn("sales", "reference_number", "TEXT"); 
+    await migrateColumn("sales", "timestamp", "INTEGER"); 
 
     // 3. Create indices for performance
     try {
@@ -129,13 +131,12 @@ export const db = {
       const newId = crypto.randomUUID();
       materialMap.set(row.id as string, newId);
       
-      // Handle potential missing group (undefined -> null)
       const oldGroupId = row.group_id as string;
       const newGroupId = (oldGroupId && materialGroupMap.get(oldGroupId)) || null;
 
       await client.execute({
-        sql: "INSERT INTO materials (id, name, unit, group_id, restaurant_id) VALUES (?, ?, ?, ?, ?)",
-        args: [newId, row.name, row.unit, newGroupId, targetId]
+        sql: "INSERT INTO materials (id, name, unit, price, group_id, restaurant_id) VALUES (?, ?, ?, ?, ?, ?)",
+        args: [newId, row.name, row.unit, row.price || 0, newGroupId, targetId]
       });
     }
 
@@ -145,13 +146,12 @@ export const db = {
       const newId = crypto.randomUUID();
       salesItemMap.set(row.id as string, newId);
       
-      // Handle potential missing group (undefined -> null)
       const oldGroupId = row.group_id as string;
       const newGroupId = (oldGroupId && salesItemGroupMap.get(oldGroupId)) || null;
 
       await client.execute({
-        sql: "INSERT INTO sales_items (id, name, unit, group_id, restaurant_id) VALUES (?, ?, ?, ?, ?)",
-        args: [newId, row.name, row.unit || null, newGroupId, targetId]
+        sql: "INSERT INTO sales_items (id, name, unit, price, group_id, restaurant_id) VALUES (?, ?, ?, ?, ?, ?)",
+        args: [newId, row.name, row.unit || null, row.price || 0, newGroupId, targetId]
       });
     }
 
@@ -229,14 +229,15 @@ export const db = {
       id: row.id as string, 
       name: row.name as string, 
       unit: row.unit as string,
+      price: row.price as number || 0,
       groupId: row.group_id as string || undefined,
       restaurantId: row.restaurant_id as string
     }));
   },
   saveMaterial: async (m: Material) => {
     await client.execute({
-      sql: "INSERT OR REPLACE INTO materials (id, name, unit, group_id, restaurant_id) VALUES (?, ?, ?, ?, ?)",
-      args: [m.id, m.name, m.unit, m.groupId || null, m.restaurantId]
+      sql: "INSERT OR REPLACE INTO materials (id, name, unit, price, group_id, restaurant_id) VALUES (?, ?, ?, ?, ?, ?)",
+      args: [m.id, m.name, m.unit, m.price || 0, m.groupId || null, m.restaurantId]
     });
   },
   deleteMaterial: async (id: string) => {
@@ -253,14 +254,15 @@ export const db = {
       id: row.id as string, 
       name: row.name as string,
       unit: row.unit as string || undefined,
+      price: row.price as number || 0,
       groupId: row.group_id as string || undefined,
       restaurantId: row.restaurant_id as string
     }));
   },
   saveItem: async (i: SalesItem) => {
     await client.execute({
-      sql: "INSERT OR REPLACE INTO sales_items (id, name, unit, group_id, restaurant_id) VALUES (?, ?, ?, ?, ?)",
-      args: [i.id, i.name, i.unit || null, i.groupId || null, i.restaurantId]
+      sql: "INSERT OR REPLACE INTO sales_items (id, name, unit, price, group_id, restaurant_id) VALUES (?, ?, ?, ?, ?, ?)",
+      args: [i.id, i.name, i.unit || null, i.price || 0, i.groupId || null, i.restaurantId]
     });
   },
   deleteItem: async (id: string) => {
