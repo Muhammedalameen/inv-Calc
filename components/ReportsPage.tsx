@@ -183,10 +183,12 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
       const totalCost = aggregatedData.reduce((acc, r) => acc + r.totalCost, 0);
       csvContent += `\n,,إجمالي التكلفة,${totalCost.toFixed(2)}\n`;
     } else {
-      csvContent += "الصنف,المباع,الإيراد,التكلفة,الربح,الخامة,الكمية,الوحدة,تكلفة الخامة\n";
+      csvContent += "الصنف,المباع,الإيراد,التكلفة,الربح,نسبة التكلفة,الخامة,الكمية,الوحدة,تكلفة الخامة\n";
       detailedData.forEach(d => {
+        const profit = d.totalRevenue - d.totalCost;
+        const costPerc = d.totalRevenue > 0 ? (d.totalCost / d.totalRevenue) * 100 : 0;
         d.ingredients.forEach(ing => {
-          csvContent += `"${d.itemName}",${d.quantitySold},${d.totalRevenue},${d.totalCost},${d.totalRevenue - d.totalCost},"${ing.materialName}",${ing.consumedQuantity.toFixed(3)},"${ing.unit}",${ing.cost.toFixed(2)}\n`;
+          csvContent += `"${d.itemName}",${d.quantitySold},${d.totalRevenue},${d.totalCost},${profit},${costPerc.toFixed(1)}%,"${ing.materialName}",${ing.consumedQuantity.toFixed(3)},"${ing.unit}",${ing.cost.toFixed(2)}\n`;
         });
       });
     }
@@ -388,6 +390,7 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
             const hasSubItems = directRecipe.some(r => r.isSub);
             const profit = item.totalRevenue - item.totalCost;
             const isProfitable = profit >= 0;
+            const costPercentage = item.totalRevenue > 0 ? (item.totalCost / item.totalRevenue) * 100 : 0;
 
             return (
               <div key={idx} className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors break-inside-avoid">
@@ -403,6 +406,7 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
                   <div className="flex items-center gap-2">
                     <span className="bg-slate-700 text-white px-3 py-1 rounded-lg text-sm font-bold">المباع: {item.quantitySold}</span>
                     <span className="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-bold">الإيراد: {item.totalRevenue.toLocaleString()} ر.س</span>
+                    <span className="bg-purple-600 text-white px-3 py-1 rounded-lg text-sm font-bold">التكلفة: {costPercentage.toFixed(1)}%</span>
                     <span className={`${isProfitable ? 'bg-emerald-500' : 'bg-rose-500'} text-white px-3 py-1 rounded-lg text-sm font-bold`}>الربح: {profit.toLocaleString()} ر.س</span>
                     
                     <div className="relative group cursor-help no-print">

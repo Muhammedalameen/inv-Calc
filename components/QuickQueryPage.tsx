@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
-import { Calculator, Package, ArrowLeftRight, Search, UtensilsCrossed, Info, ChefHat, Layers, TrendingUp, DollarSign } from 'lucide-react';
+import { Calculator, Package, ArrowLeftRight, Search, UtensilsCrossed, Info, ChefHat, Layers, TrendingUp, DollarSign, Percent } from 'lucide-react';
 import { SalesItem, Material, Recipe } from '../types';
 
 interface Props {
@@ -60,8 +60,9 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
      const sellingPrice = (selectedItem?.price || 0) * qty;
      const profit = sellingPrice - totalCost;
      const profitMargin = sellingPrice > 0 ? (profit / sellingPrice) * 100 : 0;
+     const costPercentage = sellingPrice > 0 ? (totalCost / sellingPrice) * 100 : 0;
      
-     return { totalCost, sellingPrice, profit, profitMargin };
+     return { totalCost, sellingPrice, profit, profitMargin, costPercentage };
   }, [rawMaterialsResults, selectedItem, queryQuantity]);
 
   const directSubItems = useMemo(() => {
@@ -118,7 +119,7 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             
             {/* Economic Analysis Card */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
                 <div className="flex items-center gap-2 text-slate-500 mb-2">
                   <Package className="w-4 h-4" /> <span className="text-xs font-bold">إجمالي تكلفة الخامات</span>
@@ -134,6 +135,15 @@ const QuickQueryPage: React.FC<Props> = ({ items, materials, recipes }) => {
                 </div>
                 <div className="text-2xl font-bold text-blue-600 dark:text-blue-400 font-mono">
                   {economicAnalysis.sellingPrice > 0 ? economicAnalysis.sellingPrice.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '-'} <span className="text-xs opacity-50">ر.س</span>
+                </div>
+              </div>
+
+               <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center gap-2 text-purple-500 mb-2">
+                  <Percent className="w-4 h-4" /> <span className="text-xs font-bold">نسبة التكلفة للمبيعات</span>
+                </div>
+                <div className="text-2xl font-bold text-purple-600 dark:text-purple-400 font-mono">
+                  {economicAnalysis.sellingPrice > 0 ? economicAnalysis.costPercentage.toFixed(1) : '-'} <span className="text-xs opacity-50">%</span>
                 </div>
               </div>
 
