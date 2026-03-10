@@ -106,7 +106,6 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
       name: m.name,
       unit: m.unit,
       total: consumptionMap[m.id] || 0,
-      totalCost: (consumptionMap[m.id] || 0) * (m.price || 0),
       id: m.id
     }));
 
@@ -127,23 +126,18 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
     Object.entries(itemSalesMap).forEach(([itemId, qtySold]) => {
       const item = items.find(i => i.id === itemId);
       if (item) {
-        const revenue = (item.price || 0) * qtySold;
         const flatIngs = getFlattenedConsumption(itemId, 1); // Get unit consumption
         
-        let totalCost = 0;
         const ingredients = Object.entries(flatIngs)
           .filter(([matId]) => !selectedMaterialId || matId === selectedMaterialId)
           .map(([matId, qtyPerUnit]) => {
             const mat = materials.find(m => m.id === matId);
             const totalQty = Number(qtyPerUnit) * Number(qtySold);
-            const cost = totalQty * (mat?.price || 0);
-            totalCost += cost;
             
             return {
               materialName: mat?.name || 'مجهول',
               unit: mat?.unit || '',
-              consumedQuantity: totalQty,
-              cost
+              consumedQuantity: totalQty
             };
           });
 
@@ -151,8 +145,6 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
           results.push({ 
             itemName: item.name, 
             quantitySold: qtySold, 
-            totalRevenue: revenue,
-            totalCost,
             ingredients 
           });
         }
@@ -178,17 +170,13 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
     let csvContent = `نظام CulinaTrack - تقرير استهلاك\nالفترة,${periodText}\n\n`;
     
     if (reportType === 'aggregated') {
-      csvContent += "الخامة,الوحدة,الإجمالي,التكلفة\n";
-      aggregatedData.forEach(r => csvContent += `"${r.name}","${r.unit}",${r.total.toFixed(3)},${r.totalCost.toFixed(2)}\n`);
-      const totalCost = aggregatedData.reduce((acc, r) => acc + r.totalCost, 0);
-      csvContent += `\n,,إجمالي التكلفة,${totalCost.toFixed(2)}\n`;
+      csvContent += "الخامة,الوحدة,الإجمالي\n";
+      aggregatedData.forEach(r => csvContent += `"${r.name}","${r.unit}",${r.total.toFixed(3)}\n`);
     } else {
-      csvContent += "الصنف,المباع,الإيراد,التكلفة,الربح,نسبة التكلفة,الخامة,الكمية,الوحدة,تكلفة الخامة\n";
+      csvContent += "الصنف,المباع,الخامة,الكمية,الوحدة\n";
       detailedData.forEach(d => {
-        const profit = d.totalRevenue - d.totalCost;
-        const costPerc = d.totalRevenue > 0 ? (d.totalCost / d.totalRevenue) * 100 : 0;
         d.ingredients.forEach(ing => {
-          csvContent += `"${d.itemName}",${d.quantitySold},${d.totalRevenue},${d.totalCost},${profit},${costPerc.toFixed(1)}%,"${ing.materialName}",${ing.consumedQuantity.toFixed(3)},"${ing.unit}",${ing.cost.toFixed(2)}\n`;
+          csvContent += `"${d.itemName}",${d.quantitySold},"${ing.materialName}",${ing.consumedQuantity.toFixed(3)},"${ing.unit}"\n`;
         });
       });
     }
@@ -199,8 +187,6 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
     link.click();
   };
 
-  const grandTotalAggregatedCost = aggregatedData.reduce((sum, item) => sum + item.totalCost, 0);
-
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Branding for Print */}
@@ -210,7 +196,7 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
           <div><h1 className="text-2xl font-bold">CulinaTrack</h1><p className="text-xs">نظام إدارة استهلاك المطاعم</p></div>
         </div>
         <div className="text-right">
-          <h2 className="text-xl font-bold">تقرير {reportType === 'aggregated' ? 'استهلاك وتكاليف الخامات' : 'الربحية وتحليل المبيعات'}</h2>
+          <h2 className="text-xl font-bold">تقرير {reportType === 'aggregated' ? 'استهلاك الخامات' : 'تحليل المبيعات'}</h2>
           <p className="text-sm">
             {selectedRefNumbers.length > 0 ? `فواتير محددة: ${selectedRefNumbers.length}` : `الفترة: ${startDate} إلى ${endDate}`}
           </p>
@@ -333,8 +319,8 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
 
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 no-print">
         <div className="flex bg-white dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm w-fit transition-colors">
-          <button onClick={() => setReportType('aggregated')} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${reportType === 'aggregated' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-500'}`}><Layers className="w-4 h-4" />تجميعي (تكاليف)</button>
-          <button onClick={() => setReportType('detailed')} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${reportType === 'detailed' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-500'}`}><List className="w-4 h-4" />تفصيلي (ربحية)</button>
+          <button onClick={() => setReportType('aggregated')} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${reportType === 'aggregated' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-500'}`}><Layers className="w-4 h-4" />تجميعي</button>
+          <button onClick={() => setReportType('detailed')} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${reportType === 'detailed' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-500'}`}><List className="w-4 h-4" />تفصيلي</button>
         </div>
         <div className="flex gap-3">
           <button onClick={exportCSV} className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 px-4 py-2 rounded-xl font-bold"><FileSpreadsheet className="w-4 h-4" />تصدير CSV</button>
@@ -349,8 +335,6 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
               <tr>
                 <th className="px-6 py-4">المادة الخام النهائية</th>
                 <th className="px-6 py-4 text-center">الكمية المستهلكة</th>
-                <th className="px-6 py-4 text-center">متوسط التكلفة</th>
-                <th className="px-6 py-4 text-left">التكلفة الإجمالية</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -360,24 +344,10 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
                   <td className="px-6 py-4 text-center">
                     <span className="font-mono font-bold">{data.total.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span> <span className="text-xs text-slate-400">{data.unit}</span>
                   </td>
-                  <td className="px-6 py-4 text-center text-slate-400 font-mono text-xs">
-                     {(data.totalCost / data.total).toFixed(2)}
-                  </td>
-                  <td className="px-6 py-4 font-mono font-bold text-emerald-600 dark:text-emerald-400 text-left">
-                    {data.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </td>
                 </tr>
               ))}
-              {aggregatedData.length > 0 && (
-                <tr className="bg-emerald-50/50 dark:bg-emerald-900/10 font-bold border-t-2 border-emerald-100 dark:border-emerald-800">
-                  <td colSpan={3} className="px-6 py-4 text-slate-800 dark:text-slate-200">الإجمالي الكلي لتكلفة الخامات المستهلكة</td>
-                  <td className="px-6 py-4 text-left font-mono text-lg text-emerald-700 dark:text-emerald-400">
-                    {grandTotalAggregatedCost.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-sm">ر.س</span>
-                  </td>
-                </tr>
-              )}
               {aggregatedData.length === 0 && (
-                 <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-400">لا توجد بيانات للعرض حسب الفلترة المحددة</td></tr>
+                 <tr><td colSpan={2} className="px-6 py-8 text-center text-slate-400">لا توجد بيانات للعرض حسب الفلترة المحددة</td></tr>
               )}
             </tbody>
           </table>
@@ -388,9 +358,6 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
             const itemId = items.find(i => i.name === item.itemName)?.id;
             const directRecipe = itemId ? getDirectRecipe(itemId) : [];
             const hasSubItems = directRecipe.some(r => r.isSub);
-            const profit = item.totalRevenue - item.totalCost;
-            const isProfitable = profit >= 0;
-            const costPercentage = item.totalRevenue > 0 ? (item.totalCost / item.totalRevenue) * 100 : 0;
 
             return (
               <div key={idx} className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors break-inside-avoid">
@@ -405,9 +372,6 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="bg-slate-700 text-white px-3 py-1 rounded-lg text-sm font-bold">المباع: {item.quantitySold}</span>
-                    <span className="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-bold">الإيراد: {item.totalRevenue.toLocaleString()} ر.س</span>
-                    <span className="bg-purple-600 text-white px-3 py-1 rounded-lg text-sm font-bold">التكلفة: {costPercentage.toFixed(1)}%</span>
-                    <span className={`${isProfitable ? 'bg-emerald-500' : 'bg-rose-500'} text-white px-3 py-1 rounded-lg text-sm font-bold`}>الربح: {profit.toLocaleString()} ر.س</span>
                     
                     <div className="relative group cursor-help no-print">
                       <HelpCircle className="w-5 h-5 text-slate-400" />
@@ -430,7 +394,7 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
                 </div>
                 <div className="p-4">
                   <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                    <Coins className="w-3 h-3" /> تفصيل تكلفة الخامات
+                    <Package className="w-3 h-3" /> تفصيل الخامات المستهلكة
                   </h5>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {item.ingredients.map((ing, iIdx) => (
@@ -440,8 +404,7 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
                           <span className="text-sm font-medium text-slate-600 dark:text-slate-300">{ing.materialName}</span>
                         </div>
                         <div className="text-left flex flex-col items-end">
-                          <span className="font-mono font-bold text-slate-900 dark:text-white text-sm">{ing.cost.toLocaleString(undefined, { minimumFractionDigits: 2 })} ر.س</span>
-                          <span className="text-[9px] text-slate-400">{ing.consumedQuantity.toFixed(2)} {ing.unit}</span>
+                          <span className="font-mono font-bold text-slate-900 dark:text-white text-sm">{ing.consumedQuantity.toFixed(2)} {ing.unit}</span>
                         </div>
                       </div>
                     ))}

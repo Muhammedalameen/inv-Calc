@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Plus, Trash2, Package, AlertCircle, Edit3, Save, X, FolderPlus, Tags, DollarSign } from 'lucide-react';
+import { Plus, Trash2, Package, AlertCircle, Edit3, Save, X, FolderPlus, Tags } from 'lucide-react';
 import { Material, MaterialGroup } from '../types';
 
 interface Props {
@@ -20,14 +20,12 @@ const MaterialsPage: React.FC<Props> = ({
 }) => {
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('');
-  const [price, setPrice] = useState<string>('');
   const [selectedGroupId, setSelectedGroupId] = useState<string>('');
   const [error, setError] = useState('');
   
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editUnit, setEditUnit] = useState('');
-  const [editPrice, setEditPrice] = useState<string>('');
   const [editGroupId, setEditGroupId] = useState<string>('');
 
   const [newGroupName, setNewGroupName] = useState('');
@@ -45,13 +43,11 @@ const MaterialsPage: React.FC<Props> = ({
       id: crypto.randomUUID() as `${string}-${string}-${string}-${string}-${string}`, 
       name: name.trim(), 
       unit: unit.trim(),
-      price: parseFloat(price) || 0,
       groupId: selectedGroupId || undefined
     };
     await onAdd(newMaterial);
     setName('');
     setUnit('');
-    setPrice('');
   };
 
   const saveEdit = async (id: string) => {
@@ -60,7 +56,6 @@ const MaterialsPage: React.FC<Props> = ({
       id, 
       name: editName.trim(), 
       unit: editUnit.trim(),
-      price: parseFloat(editPrice) || 0,
       groupId: editGroupId || undefined
     });
     setEditingId(null);
@@ -141,7 +136,7 @@ const MaterialsPage: React.FC<Props> = ({
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 dark:text-white">
           <Plus className="w-5 h-5 text-emerald-500" /> إضافة خامة جديدة للمخزون
         </h3>
-        <form onSubmit={addMaterial} className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <form onSubmit={addMaterial} className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="md:col-span-2">
             <input
               type="text" placeholder="اسم الخامة (مثال: زيت زيتون)"
@@ -162,13 +157,6 @@ const MaterialsPage: React.FC<Props> = ({
             </datalist>
           </div>
           <div>
-            <input
-              type="number" step="0.01" placeholder="سعر التكلفة"
-              className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 bg-white dark:bg-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
-              value={price} onChange={(e) => setPrice(e.target.value)}
-            />
-          </div>
-          <div>
             <select
               className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 bg-white dark:bg-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
               value={selectedGroupId} onChange={(e) => setSelectedGroupId(e.target.value)}
@@ -177,7 +165,7 @@ const MaterialsPage: React.FC<Props> = ({
               {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
           </div>
-          <button className="md:col-span-5 bg-emerald-500 text-white px-6 py-3 rounded-xl hover:bg-emerald-600 font-bold shadow-lg shadow-emerald-500/20 transition-all active:scale-95">إضافة الخامة للمستودع</button>
+          <button className="md:col-span-4 bg-emerald-500 text-white px-6 py-3 rounded-xl hover:bg-emerald-600 font-bold shadow-lg shadow-emerald-500/20 transition-all active:scale-95">إضافة الخامة للمستودع</button>
         </form>
       </div>
 
@@ -207,9 +195,6 @@ const MaterialsPage: React.FC<Props> = ({
                             <td className="px-6 py-3 w-32">
                               <input type="text" className="w-full border dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white rounded-lg px-2 py-1 outline-none" value={editUnit} onChange={(e) => setEditUnit(e.target.value)} />
                             </td>
-                            <td className="px-6 py-3 w-32">
-                              <input type="number" step="0.01" className="w-full border dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white rounded-lg px-2 py-1 outline-none" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} />
-                            </td>
                             <td className="px-6 py-3 w-40">
                               <select className="w-full border dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white rounded-lg px-2 py-1 outline-none" value={editGroupId} onChange={(e) => setEditGroupId(e.target.value)}>
                                 <option value="">بدون مجموعة</option>
@@ -230,14 +215,11 @@ const MaterialsPage: React.FC<Props> = ({
                             <td className="px-6 py-4 text-slate-500 dark:text-slate-400 w-32 font-medium">
                               {m.unit}
                             </td>
-                            <td className="px-6 py-4 text-emerald-600 dark:text-emerald-400 w-32 font-bold flex items-center gap-1">
-                               {m.price ? m.price.toLocaleString() : '-'} <span className="text-[10px] opacity-60">ر.س</span>
-                            </td>
                             <td className="px-6 py-4 w-40">
                               {/* Empty space for consistency if needed */}
                             </td>
                             <td className="px-6 py-4 flex justify-end gap-1">
-                              <button onClick={() => { setEditingId(m.id); setEditName(m.name); setEditUnit(m.unit); setEditPrice(m.price?.toString() || ''); setEditGroupId(m.groupId || ''); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg" title="تعديل"><Edit3 className="w-4 h-4" /></button>
+                              <button onClick={() => { setEditingId(m.id); setEditName(m.name); setEditUnit(m.unit); setEditGroupId(m.groupId || ''); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg" title="تعديل"><Edit3 className="w-4 h-4" /></button>
                               <button onClick={() => handleDelete(m.id, m.name)} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg" title="حذف"><Trash2 className="w-4 h-4" /></button>
                             </td>
                           </>
