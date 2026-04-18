@@ -19,7 +19,7 @@ const Header: React.FC<HeaderProps> = ({ activeTab, onOpenSidebar }) => {
   };
 
   return (
-    <header className="bg-white border-b border-slate-200 px-4 md:px-8 py-4 flex items-center justify-between sticky top-0 z-30">
+    <header className="bg-white border-b border-slate-200 px-4 md:px-8 py-4 flex items-center justify-between sticky top-0 z-30 print:hidden">
       <div className="flex items-center gap-4">
         <button 
           onClick={onOpenSidebar}

@@ -487,12 +487,12 @@ const App: React.FC = () => {
         onExit={() => setCurrentRestaurant(null)}
       />
       
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 print:flex-none print:w-full print:block">
         <Header 
           activeTab={activeTab} 
           onOpenSidebar={() => setIsSidebarOpen(true)}
         />
-        <main className="p-4 md:p-8 flex-1 overflow-y-auto">
+        <main className="p-4 md:p-8 flex-1 overflow-y-auto print:overflow-visible print:p-0 print:m-0">
           {renderContent()}
         </main>
       </div>

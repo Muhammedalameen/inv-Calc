@@ -5,10 +5,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CulinaTrack - نظام إدارة استهلاك المطاعم</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
       body {
         font-family: 'Cairo', sans-serif;
@@ -17,13 +17,23 @@
         -webkit-font-smoothing: antialiased;
       }
       @media print {
-        aside, header, button, .no-print, nav {
+        @page {
+          size: A4;
+          margin: 1.5cm;
+        }
+        body {
+          background-color: white !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        aside, header, button, .no-print, nav, .sidebar {
           display: none !important;
         }
         main {
           padding: 0 !important;
           margin: 0 !important;
-          background: white !important;
+          width: 100% !important;
+          max-width: 100% !important;
         }
         .print-only {
           display: block !important;
@@ -34,15 +44,26 @@
           box-shadow: none !important;
         }
         .rounded-2xl {
-          border-radius: 0 !important;
+          border-radius: 8px !important;
         }
         table {
           width: 100% !important;
           border-collapse: collapse !important;
+          page-break-inside: auto !important;
+        }
+        tr {
+          page-break-inside: avoid !important;
+          page-break-after: auto !important;
         }
         th, td {
           border-bottom: 1px solid #e2e8f0 !important;
           padding: 8px !important;
+        }
+        .break-before-page {
+          page-break-before: always !important;
+        }
+        .break-inside-avoid {
+          page-break-inside: avoid !important;
         }
       }
       ::-webkit-scrollbar {
@@ -59,24 +80,9 @@
         background: #94a3b8;
       }
     </style>
-    <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@19.0.0",
-    "react-dom": "https://esm.sh/react-dom@19.0.0",
-    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
-    "lucide-react": "https://esm.sh/lucide-react@0.460.0",
-    "@libsql/client": "https://esm.sh/@libsql/client@0.14.0/web",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/"
-  }
-}
-</script>
-  <link rel="stylesheet" href="/index.css">
-</head>
+  </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="./index.tsx"></script>
-  <script type="module" src="/index.tsx"></script>
-</body>
+    <script type="module" src="/index.tsx"></script>
+  </body>
 </html>

@@ -187,19 +187,33 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
     link.click();
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-6 print:m-0 print:p-0 print:max-w-none print:w-full print:block">
       {/* Branding for Print */}
-      <div className="hidden print:flex items-center justify-between mb-8 border-b-2 border-emerald-500 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="bg-emerald-500 p-2 rounded-lg"><ChefHat className="w-8 h-8 text-white" /></div>
-          <div><h1 className="text-2xl font-bold">CulinaTrack</h1><p className="text-xs">نظام إدارة استهلاك المطاعم</p></div>
+      <div className="hidden print:block mb-8 border-b-2 border-emerald-500 pb-4">
+        <div className="flex items-center justify-between">
+           <div className="flex items-center gap-3">
+             <div className="bg-emerald-500 p-2 rounded-lg border border-emerald-600"><ChefHat className="w-8 h-8 text-white" /></div>
+             <div>
+               <h1 className="text-3xl font-bold text-slate-900">CulinaTrack</h1>
+               <p className="text-sm text-slate-500 font-medium">نظام إدارة استهلاك المطاعم</p>
+             </div>
+           </div>
+           <div className="text-right">
+             <h2 className="text-2xl font-bold text-slate-800">تقرير {reportType === 'aggregated' ? 'استهلاك الخامات' : 'تحليل المبيعات الذكي'}</h2>
+             <p className="text-sm text-slate-600 font-medium mt-1">
+               {selectedRefNumbers.length > 0 ? `فواتير محددة: ${selectedRefNumbers.length}` : `الفترة: ${startDate} إلى ${endDate}`}
+             </p>
+           </div>
         </div>
-        <div className="text-right">
-          <h2 className="text-xl font-bold">تقرير {reportType === 'aggregated' ? 'استهلاك الخامات' : 'تحليل المبيعات'}</h2>
-          <p className="text-sm">
-            {selectedRefNumbers.length > 0 ? `فواتير محددة: ${selectedRefNumbers.length}` : `الفترة: ${startDate} إلى ${endDate}`}
-          </p>
+        <div className="mt-4 pt-4 border-t border-slate-200">
+           <div className="flex flex-wrap gap-4 text-xs font-medium text-slate-600">
+             <span>تاريخ الطباعة: <span className="font-mono">{new Date().toLocaleString('ar-EG')}</span></span>
+           </div>
         </div>
       </div>
 
@@ -324,25 +338,25 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
         </div>
         <div className="flex gap-3">
           <button onClick={exportCSV} className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 px-4 py-2 rounded-xl font-bold"><FileSpreadsheet className="w-4 h-4" />تصدير CSV</button>
-          <button onClick={() => window.print()} className="flex items-center gap-2 text-sm text-slate-700 bg-white dark:bg-slate-800 border dark:border-slate-700 px-4 py-2 rounded-xl font-bold"><Printer className="w-4 h-4" />طباعة PDF</button>
+          <button onClick={handlePrint} className="flex items-center gap-2 text-sm text-slate-700 bg-white dark:bg-slate-800 border dark:border-slate-700 px-4 py-2 rounded-xl font-bold"><Printer className="w-4 h-4" />طباعة PDF</button>
         </div>
       </div>
 
       {reportType === 'aggregated' ? (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors">
-          <table className="w-full text-right">
-            <thead className="bg-slate-50/50 dark:bg-slate-800/50 border-b dark:border-slate-800 text-slate-500 text-xs font-bold">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors print:shadow-none print:border-slate-300 print:rounded-lg">
+          <table className="w-full text-right print:text-sm">
+            <thead className="bg-slate-50/50 dark:bg-slate-800/50 border-b dark:border-slate-800 text-slate-500 text-xs font-bold print:bg-slate-100 print:text-slate-800">
               <tr>
                 <th className="px-6 py-4">المادة الخام النهائية</th>
                 <th className="px-6 py-4 text-center">الكمية المستهلكة</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-slate-200">
               {aggregatedData.map((data, i) => (
-                <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                  <td className="px-6 py-4 font-bold text-slate-700 dark:text-slate-200">{data.name}</td>
+                <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors print:hover:bg-transparent">
+                  <td className="px-6 py-4 font-bold text-slate-700 dark:text-slate-200 print:text-slate-900">{data.name}</td>
                   <td className="px-6 py-4 text-center">
-                    <span className="font-mono font-bold">{data.total.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span> <span className="text-xs text-slate-400">{data.unit}</span>
+                    <span className="font-mono font-bold print:text-slate-900">{data.total.toLocaleString(undefined, { minimumFractionDigits: 3 })}</span> <span className="text-xs text-slate-400 print:text-slate-600">{data.unit}</span>
                   </td>
                 </tr>
               ))}
@@ -360,18 +374,18 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
             const hasSubItems = directRecipe.some(r => r.isSub);
 
             return (
-              <div key={idx} className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors break-inside-avoid">
-                <div className="p-4 bg-slate-900 dark:bg-slate-800 text-white flex flex-wrap justify-between items-center gap-3">
+              <div key={idx} className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors break-inside-avoid print:shadow-none print:border-slate-300 print:mb-4">
+                <div className="p-4 bg-slate-900 dark:bg-slate-800 print:bg-slate-100 print:text-slate-900 text-white flex flex-wrap justify-between items-center gap-3 print:p-3 print:border-b print:border-slate-200">
                   <div className="flex items-center gap-3">
                     <span className="text-lg font-bold">{item.itemName}</span>
                     {hasSubItems && (
-                       <div className="bg-blue-500/20 text-blue-300 text-[10px] px-2 py-0.5 rounded-full border border-blue-500/30 flex items-center gap-1">
-                         <ChefHat className="w-3 h-3" /> يتضمن مكونات مجهزة
+                       <div className="bg-blue-500/20 print:bg-transparent text-blue-300 print:text-slate-500 print:border-slate-300 text-[10px] px-2 py-0.5 rounded-full border border-blue-500/30 flex items-center gap-1">
+                         <ChefHat className="w-3 h-3 print:text-slate-400" /> يتضمن مكونات مجهزة
                        </div>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="bg-slate-700 text-white px-3 py-1 rounded-lg text-sm font-bold">المباع: {item.quantitySold}</span>
+                    <span className="bg-slate-700 print:bg-slate-200 print:text-slate-800 print:border print:border-slate-300 text-white px-3 py-1 rounded-lg text-sm font-bold">المباع: {item.quantitySold}</span>
                     
                     <div className="relative group cursor-help no-print">
                       <HelpCircle className="w-5 h-5 text-slate-400" />
@@ -392,19 +406,19 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
                     </div>
                   </div>
                 </div>
-                <div className="p-4">
-                  <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <div className="p-4 print:p-2">
+                  <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2 print:hidden">
                     <Package className="w-3 h-3" /> تفصيل الخامات المستهلكة
                   </h5>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 print:gap-1.5 print:grid-cols-3 text-sm">
                     {item.ingredients.map((ing, iIdx) => (
-                      <div key={iIdx} className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800 flex justify-between items-center group">
+                      <div key={iIdx} className="p-3 print:p-2 bg-slate-50 dark:bg-slate-800/50 print:bg-white print:border-slate-200 rounded-xl border border-slate-100 dark:border-slate-800 flex justify-between items-center group">
                         <div className="flex items-center gap-2">
-                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"></div>
-                          <span className="text-sm font-medium text-slate-600 dark:text-slate-300">{ing.materialName}</span>
+                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 print:bg-emerald-600 print:hidden"></div>
+                          <span className="text-sm font-medium text-slate-600 dark:text-slate-300 print:text-slate-700">{ing.materialName}</span>
                         </div>
                         <div className="text-left flex flex-col items-end">
-                          <span className="font-mono font-bold text-slate-900 dark:text-white text-sm">{ing.consumedQuantity.toFixed(2)} {ing.unit}</span>
+                          <span className="font-mono font-bold text-slate-900 dark:text-white print:text-slate-900 text-sm">{ing.consumedQuantity.toFixed(2)} {ing.unit}</span>
                         </div>
                       </div>
                     ))}
