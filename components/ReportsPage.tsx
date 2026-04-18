@@ -406,19 +406,37 @@ const ReportsPage: React.FC<Props> = ({ materials, items, recipes, sales }) => {
                     </div>
                   </div>
                 </div>
-                <div className="p-4 print:p-2">
+                <div className="p-4 print:p-0">
                   <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2 print:hidden">
                     <Package className="w-3 h-3" /> تفصيل الخامات المستهلكة
                   </h5>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 print:gap-1.5 print:grid-cols-3 text-sm">
+                  <table className="hidden print:table w-full text-right text-sm">
+                    <thead className="bg-gray-50 border-b border-gray-200 text-gray-500 text-xs uppercase">
+                      <tr>
+                        <th className="px-4 py-2 w-2/3 border-l border-gray-200 text-slate-500">الخامة المستهلكة</th>
+                        <th className="px-4 py-2 text-center border-l border-gray-200 text-slate-500">الكمية</th>
+                        <th className="px-4 py-2 text-left text-slate-500">الوحدة</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {item.ingredients.map((ing, iIdx) => (
+                        <tr key={iIdx}>
+                          <td className="px-4 py-2 font-medium border-l border-gray-200 text-slate-800">{ing.materialName}</td>
+                          <td className="px-4 py-2 text-center font-mono border-l border-gray-200 text-black">{ing.consumedQuantity.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                          <td className="px-4 py-2 text-left text-xs text-slate-600">{ing.unit}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 print:hidden text-sm">
                     {item.ingredients.map((ing, iIdx) => (
-                      <div key={iIdx} className="p-3 print:p-2 bg-slate-50 dark:bg-slate-800/50 print:bg-white print:border-slate-200 rounded-xl border border-slate-100 dark:border-slate-800 flex justify-between items-center group">
+                      <div key={iIdx} className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800 flex justify-between items-center group">
                         <div className="flex items-center gap-2">
-                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 print:bg-emerald-600 print:hidden"></div>
-                          <span className="text-sm font-medium text-slate-600 dark:text-slate-300 print:text-slate-700">{ing.materialName}</span>
+                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"></div>
+                          <span className="text-sm font-medium text-slate-600 dark:text-slate-300">{ing.materialName}</span>
                         </div>
                         <div className="text-left flex flex-col items-end">
-                          <span className="font-mono font-bold text-slate-900 dark:text-white print:text-slate-900 text-sm">{ing.consumedQuantity.toFixed(2)} {ing.unit}</span>
+                          <span className="font-mono font-bold text-slate-900 dark:text-white text-sm">{ing.consumedQuantity.toFixed(2)} {ing.unit}</span>
                         </div>
                       </div>
                     ))}

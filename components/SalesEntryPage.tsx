@@ -382,77 +382,92 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
              
              {/* 1. Invoice Template */}
              {printData.type === 'invoice' && printData.invoiceItems && (
-               <table className="w-full text-right text-sm border-collapse border border-black">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="py-3 px-4 border-b border-black border-l">الصنف</th>
-                      <th className="py-3 px-4 text-center border-b border-black border-l">الكمية</th>
-                      <th className="py-3 px-4 text-left border-b border-black">الوحدة</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {printData.invoiceItems.map((item, idx) => {
-                      const i = items.find(x => x.id === item.itemId);
-                      return (
-                        <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                          <td className="py-3 px-4 font-bold border-l border-gray-300">{i?.name}</td>
-                          <td className="py-3 px-4 text-center font-mono text-lg border-l border-gray-300">{item.quantitySold}</td>
-                          <td className="py-3 px-4 text-left">{i?.unit}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-               </table>
+               <div className="space-y-4">
+                  <div className="text-center font-bold text-lg border-b border-black pb-2 mb-4">قائمة الأصناف المباعة</div>
+                  <table className="w-full text-right text-sm border-collapse border border-black">
+                    <thead className="bg-gray-100 print:bg-gray-200">
+                      <tr>
+                        <th className="py-2 px-3 border-b border-black border-l">الصنف</th>
+                        <th className="py-2 px-3 text-center border-b border-black border-l">الكمية</th>
+                        <th className="py-2 px-3 text-left border-b border-black">الوحدة</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {printData.invoiceItems.map((item, idx) => {
+                        const i = items.find(x => x.id === item.itemId);
+                        return (
+                          <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                            <td className="py-2 px-3 font-bold border-l border-gray-300 border-b border-gray-300">{i?.name}</td>
+                            <td className="py-2 px-3 text-center font-mono text-lg border-l border-gray-300 border-b border-gray-300">{item.quantitySold}</td>
+                            <td className="py-2 px-3 text-left border-b border-gray-300">{i?.unit}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                 </table>
+                 <div className="flex justify-between font-bold text-lg mt-4 border-t-2 border-black pt-2">
+                    <span>إجمالي الأصناف المبيعة:</span>
+                    <span>{printData.invoiceItems.reduce((acc, curr) => acc + curr.quantitySold, 0)}</span>
+                 </div>
+               </div>
              )}
 
              {/* 2. Aggregated Consumption Template */}
              {printData.type === 'consumption-aggregated' && printData.aggregatedReport && (
-               <table className="w-full text-right text-sm border-collapse border border-black">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="py-3 px-4 border-b border-black border-l w-1/2">الخامة الأساسية</th>
-                      <th className="py-3 px-4 text-center border-b border-black border-l">إجمالي الكمية المستهلكة</th>
-                      <th className="py-3 px-4 text-left border-b border-black">الوحدة</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {printData.aggregatedReport.map((item, idx) => (
-                      <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                        <td className="py-3 px-4 font-bold border-l border-gray-300">{item.name}</td>
-                        <td className="py-3 px-4 text-center font-mono text-lg font-bold border-l border-gray-300">{item.total.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
-                        <td className="py-3 px-4 text-left">{item.unit}</td>
+               <div className="space-y-4">
+                 <div className="text-center font-bold text-lg border-b border-black pb-2 mb-4">تقرير الاستهلاك التجميعي للمنصرف من المخزن</div>
+                 <table className="w-full text-right text-sm border-collapse border border-black">
+                    <thead className="bg-gray-100 print:bg-gray-200">
+                      <tr>
+                        <th className="py-2 px-3 border-b border-black border-l w-1/2">الخامة الأساسية</th>
+                        <th className="py-2 px-3 text-center border-b border-black border-l">إجمالي الكمية المستهلكة</th>
+                        <th className="py-2 px-3 text-left border-b border-black">الوحدة</th>
                       </tr>
-                    ))}
-                  </tbody>
-               </table>
+                    </thead>
+                    <tbody>
+                      {printData.aggregatedReport.map((item, idx) => (
+                        <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          <td className="py-2 px-3 font-bold border-l border-gray-300 border-b border-gray-300">{item.name}</td>
+                          <td className="py-2 px-3 text-center font-mono text-lg font-bold border-l border-gray-300 border-b border-gray-300">{item.total.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                          <td className="py-2 px-3 text-left border-b border-gray-300">{item.unit}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                 </table>
+                 <div className="flex justify-between font-bold text-md mt-4 border-t-2 border-black pt-2">
+                    <span>إجمالي عدد الخامات المختلفة المستهلكة:</span>
+                    <span>{printData.aggregatedReport.length} خامات</span>
+                 </div>
+               </div>
              )}
 
              {/* 3. Detailed Consumption Template */}
              {printData.type === 'consumption-detailed' && printData.detailedReport && (
                <div className="space-y-6">
+                 <div className="text-center font-bold text-lg border-b border-black pb-2 mb-4">التقرير التحليلي للاستهلاك مفصّلاً حسب الأصناف المباعة</div>
                  {printData.detailedReport.map((item, idx) => (
-                   <div key={idx} className="border border-black break-inside-avoid shadow-sm">
-                      <div className="bg-gray-100 px-4 py-3 border-b border-black flex justify-between items-center">
-                        <span className="font-bold text-lg">{item.itemName}</span>
+                   <div key={idx} className="border border-black break-inside-avoid shadow-none">
+                      <div className="bg-gray-100 print:bg-gray-200 px-4 py-2 border-b border-black flex justify-between items-center">
+                        <span className="font-bold text-md">{item.itemName}</span>
                         <div className="flex items-center gap-2">
-                           <span className="text-xs font-bold text-gray-500">العدد المباع:</span>
-                           <span className="font-mono font-bold bg-black text-white px-3 py-1 rounded-md">{item.quantitySold}</span>
+                           <span className="text-xs font-bold text-gray-700">العدد المباع:</span>
+                           <span className="font-mono font-bold text-black border border-black bg-white px-2 py-0.5 rounded-sm">{item.quantitySold}</span>
                         </div>
                       </div>
-                      <table className="w-full text-right text-sm">
-                        <thead className="text-xs text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
+                      <table className="w-full text-right text-sm border-collapse">
+                        <thead className="text-[11px] text-gray-800 uppercase bg-gray-50 print:bg-gray-100 border-b border-black">
                           <tr>
-                            <th className="px-4 py-2 w-2/3">الخامة المستهلكة</th>
-                            <th className="px-4 py-2 text-center">الكمية</th>
-                            <th className="px-4 py-2 text-left">الوحدة</th>
+                            <th className="px-3 py-1.5 w-2/3 border-l border-gray-300">الخامة المستهلكة</th>
+                            <th className="px-3 py-1.5 text-center border-l border-gray-300">الكمية</th>
+                            <th className="px-3 py-1.5 text-left">الوحدة</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-200">
+                        <tbody className="divide-y divide-gray-300">
                           {item.ingredients.map((ing, iIdx) => (
                             <tr key={iIdx}>
-                              <td className="px-4 py-2 font-medium">{ing.name}</td>
-                              <td className="px-4 py-2 text-center font-mono">{ing.total.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
-                              <td className="px-4 py-2 text-left text-xs">{ing.unit}</td>
+                              <td className="px-3 py-1.5 font-medium border-l border-gray-300">{ing.name}</td>
+                              <td className="px-3 py-1.5 text-center font-mono border-l border-gray-300">{ing.total.toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                              <td className="px-3 py-1.5 text-left text-xs">{ing.unit}</td>
                             </tr>
                           ))}
                         </tbody>
