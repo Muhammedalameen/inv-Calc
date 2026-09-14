@@ -317,10 +317,67 @@ export const db = {
   deleteSale: async (id: string) => {
     await client.execute({ sql: "DELETE FROM sales WHERE id = ?", args: [id] });
   },
-  updateSale: async (id: string, quantity: number) => {
+  deleteSalesBatch: async (refNumber: string, restaurantId: string) => {
     await client.execute({
-      sql: "UPDATE sales SET quantity_sold = ? WHERE id = ?",
-      args: [quantity, id]
+      sql: "DELETE FROM sales WHERE reference_number = ? AND restaurant_id = ?",
+      args: [refNumber, restaurantId]
     });
+  },
+  updateSale: async (id: string, updates: { quantitySold?: number; itemId?: string; date?: string } | number) => {
+    if (typeof updates === 'number') {
+      await client.execute({
+        sql: "UPDATE sales SET quantity_sold = ? WHERE id = ?",
+        args: [updates, id]
+      });
+      return;
+    }
+    const sets: string[] = [];
+    const args: any[] = [];
+    if (updates.quantitySold !== undefined) {
+      sets.push("quantity_sold = ?");
+      args.push(updates.quantitySold);
+    }
+    if (updates.itemId !== undefined) {
+      sets.push("item_id = ?");
+      args.push(updates.itemId);
+    }
+    if (updates.date !== undefined) {
+      sets.push("sale_date = ?");
+      args.push(updates.date);
+    }
+    if (sets.length > 0) {
+      args.push(id);
+      await client.execute({
+        sql: `UPDATE sales SET ${sets.join(", ")} WHERE id = ?`,
+        args
+      });
+    }
+  },
+  updateInvoiceBatch: async (
+    refNumber: string,
+    newDate: string,
+    toUpdate: { id: string; itemId: string; quantitySold: number }[],
+    toInsert: SaleEntry[],
+    toDeleteIds: string[]
+  ) => {
+    const queries: { sql: string; args: any[] }[] = [];
+    for (const id of toDeleteIds) {
+      queries.push({ sql: "DELETE FROM sales WHERE id = ?", args: [id] });
+    }
+    for (const item of toUpdate) {
+      queries.push({
+        sql: "UPDATE sales SET item_id = ?, quantity_sold = ?, sale_date = ? WHERE id = ?",
+        args: [item.itemId, item.quantitySold, newDate, item.id]
+      });
+    }
+    for (const s of toInsert) {
+      queries.push({
+        sql: "INSERT INTO sales (id, item_id, quantity_sold, sale_date, reference_number, timestamp, restaurant_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        args: [s.id, s.itemId, s.quantitySold, newDate, refNumber, s.timestamp || Date.now(), s.restaurantId]
+      });
+    }
+    if (queries.length > 0) {
+      await client.batch(queries, "write");
+    }
   }
 };

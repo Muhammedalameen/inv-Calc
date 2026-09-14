@@ -10,7 +10,15 @@ interface Props {
   recipes: Recipe[];
   onSave: (newSales: Omit<SaleEntry, 'restaurantId'>[]) => Promise<void>;
   onDeleteSale: (id: string) => Promise<void>;
-  onUpdateSale: (id: string, quantity: number) => Promise<void>;
+  onDeleteSalesBatch?: (refNumber: string) => Promise<void>;
+  onUpdateSale: (id: string, quantity: number, itemId?: string) => Promise<void>;
+  onUpdateInvoiceBatch?: (
+    refNumber: string,
+    newDate: string,
+    toUpdate: { id: string; itemId: string; quantitySold: number }[],
+    toInsert: Omit<SaleEntry, 'restaurantId'>[],
+    toDeleteIds: string[]
+  ) => Promise<void>;
 }
 
 interface NewSaleRow {
@@ -51,7 +59,26 @@ interface ConsumptionModalState {
   batchItems: SaleEntry[];
 }
 
-const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onSave, onDeleteSale, onUpdateSale }) => {
+interface EditInvoiceModalState {
+  isOpen: boolean;
+  refNumber: string;
+  date: string;
+  rows: { tempId: string; id?: string; itemId: string; quantity: number }[];
+  originalItemIds: string[];
+  isSaving: boolean;
+}
+
+const SalesEntryPage: React.FC<Props> = ({
+  items,
+  sales,
+  materials,
+  recipes,
+  onSave,
+  onDeleteSale,
+  onDeleteSalesBatch,
+  onUpdateSale,
+  onUpdateInvoiceBatch
+}) => {
   const [activeTab, setActiveTab] = useState<'entry' | 'history'>('entry');
   
   // Entry State
@@ -65,7 +92,15 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
   const [filterItemId, setFilterItemId] = useState('');
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
   const [editQuantity, setEditQuantity] = useState<number>(0);
+  const [editItemId, setEditItemId] = useState<string>('');
   const [expandedRefs, setExpandedRefs] = useState<string[]>([]);
+
+  // Quick Add per Invoice State
+  const [quickAddItems, setQuickAddItems] = useState<Record<string, { itemId: string; quantity: number }>>({});
+  const [isQuickAdding, setIsQuickAdding] = useState<string | null>(null);
+
+  // Edit Full Invoice Modal State
+  const [editInvoiceModal, setEditInvoiceModal] = useState<EditInvoiceModalState | null>(null);
 
   // Printing & Modal State
   const [printData, setPrintData] = useState<PrintState | null>(null);
@@ -242,9 +277,155 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
 
   const handleDeleteBatch = async (refNumber: string, batchItems: SaleEntry[]) => {
     if (confirm(`هل أنت متأكد من حذف الفاتورة بالكامل (${refNumber})؟ سيتم حذف ${batchItems.length} صنف.`)) {
-      for (const item of batchItems) {
-        await onDeleteSale(item.id);
+      if (onDeleteSalesBatch) {
+        await onDeleteSalesBatch(refNumber);
+      } else {
+        for (const item of batchItems) {
+          await onDeleteSale(item.id);
+        }
       }
+    }
+  };
+
+  const handleQuickAddItemToInvoice = async (refNumber: string, invoiceDate: string, defaultTimestamp?: number) => {
+    const current = quickAddItems[refNumber];
+    if (!current || !current.itemId || current.quantity <= 0) {
+      alert('يرجى تحديد الصنف وإدخال كمية صحيحة');
+      return;
+    }
+
+    setIsQuickAdding(refNumber);
+    try {
+      const newEntry: Omit<SaleEntry, 'restaurantId'> = {
+        id: crypto.randomUUID(),
+        itemId: current.itemId,
+        quantitySold: current.quantity,
+        date: invoiceDate,
+        referenceNumber: refNumber,
+        timestamp: defaultTimestamp || Date.now()
+      };
+      await onSave([newEntry]);
+      // Reset this invoice's quick add inputs
+      setQuickAddItems(prev => ({
+        ...prev,
+        [refNumber]: { itemId: '', quantity: 1 }
+      }));
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ أثناء إضافة الصنف للفاتورة');
+    } finally {
+      setIsQuickAdding(null);
+    }
+  };
+
+  const handleOpenEditInvoiceModal = (refNumber: string, invoiceDate: string, batchItems: SaleEntry[]) => {
+    setEditInvoiceModal({
+      isOpen: true,
+      refNumber,
+      date: invoiceDate,
+      rows: batchItems.map(item => ({
+        tempId: item.id,
+        id: item.id,
+        itemId: item.itemId,
+        quantity: item.quantitySold
+      })),
+      originalItemIds: batchItems.map(item => item.id),
+      isSaving: false
+    });
+  };
+
+  const handleAddRowToEditInvoice = () => {
+    if (!editInvoiceModal) return;
+    setEditInvoiceModal(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        rows: [
+          ...prev.rows,
+          { tempId: crypto.randomUUID(), itemId: '', quantity: 1 }
+        ]
+      };
+    });
+  };
+
+  const handleRemoveRowFromEditInvoice = (tempId: string) => {
+    if (!editInvoiceModal) return;
+    setEditInvoiceModal(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        rows: prev.rows.filter(r => r.tempId !== tempId)
+      };
+    });
+  };
+
+  const handleUpdateRowInEditInvoice = (tempId: string, field: 'itemId' | 'quantity', val: any) => {
+    if (!editInvoiceModal) return;
+    setEditInvoiceModal(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        rows: prev.rows.map(r => r.tempId === tempId ? { ...r, [field]: val } : r)
+      };
+    });
+  };
+
+  const handleSaveEditedInvoice = async () => {
+    if (!editInvoiceModal) return;
+    const { refNumber, date: newDate, rows: editRows, originalItemIds } = editInvoiceModal;
+
+    const validRows = editRows.filter(r => r.itemId && r.quantity > 0);
+    if (validRows.length === 0) {
+      alert('يجب أن تحتوي الفاتورة على صنف واحد على الأقل بكمية صالحة');
+      return;
+    }
+
+    setEditInvoiceModal(prev => prev ? { ...prev, isSaving: true } : null);
+
+    try {
+      const remainingIds = new Set(validRows.filter(r => r.id).map(r => r.id as string));
+      const toDeleteIds = originalItemIds.filter(id => !remainingIds.has(id));
+
+      const toUpdate: { id: string; itemId: string; quantitySold: number }[] = [];
+      const toInsert: Omit<SaleEntry, 'restaurantId'>[] = [];
+
+      validRows.forEach(r => {
+        if (r.id) {
+          toUpdate.push({
+            id: r.id,
+            itemId: r.itemId,
+            quantitySold: r.quantity
+          });
+        } else {
+          toInsert.push({
+            id: crypto.randomUUID(),
+            itemId: r.itemId,
+            quantitySold: r.quantity,
+            date: newDate,
+            referenceNumber: refNumber,
+            timestamp: Date.now()
+          });
+        }
+      });
+
+      if (onUpdateInvoiceBatch) {
+        await onUpdateInvoiceBatch(refNumber, newDate, toUpdate, toInsert, toDeleteIds);
+      } else {
+        for (const delId of toDeleteIds) {
+          await onDeleteSale(delId);
+        }
+        for (const item of toUpdate) {
+          await onUpdateSale(item.id, item.quantitySold, item.itemId);
+        }
+        if (toInsert.length > 0) {
+          await onSave(toInsert);
+        }
+      }
+
+      setEditInvoiceModal(null);
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ أثناء حفظ تعديلات الفاتورة');
     }
   };
 
@@ -302,6 +483,7 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
   const startEdit = (sale: SaleEntry) => {
     setEditingSaleId(sale.id);
     setEditQuantity(sale.quantitySold);
+    setEditItemId(sale.itemId);
   };
 
   return (
@@ -349,6 +531,161 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
 
             <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800">
                <button onClick={() => setConsumptionModal(null)} className="w-full py-3 font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">إلغاء الأمر</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- Edit Invoice Modal --- */}
+      {editInvoiceModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 print:hidden">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/40">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-2xl">
+                  <Edit3 className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-slate-800 dark:text-white">تعديل الفاتورة المسجلة</h3>
+                    <span className="font-mono text-sm bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-lg text-slate-700 dark:text-slate-200 font-bold">
+                      {editInvoiceModal.refNumber}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    يمكنك تعديل تاريخ الفاتورة، إضافة أصناف جديدة، تغيير الأصناف والكميات أو حذفها
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditInvoiceModal(null)}
+                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content / Scrollable Area */}
+            <div className="p-6 space-y-6 overflow-y-auto flex-1">
+              {/* Date Input */}
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4 text-emerald-500" />
+                    <span>تاريخ الفاتورة:</span>
+                  </label>
+                  <p className="text-[11px] text-slate-400">سيتم تطبيق هذا التاريخ على جميع أصناف الفاتورة</p>
+                </div>
+                <input
+                  type="date"
+                  value={editInvoiceModal.date}
+                  onChange={(e) => setEditInvoiceModal(prev => prev ? { ...prev, date: e.target.value } : null)}
+                  className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500 dark:text-white"
+                />
+              </div>
+
+              {/* Items List */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                    <ShoppingCart className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>أصناف الفاتورة ({editInvoiceModal.rows.length})</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleAddRowToEditInvoice}
+                    className="flex items-center gap-1 text-xs bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-xl font-bold transition-colors shadow-sm shadow-emerald-500/20"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> إضافة صنف جديد
+                  </button>
+                </div>
+
+                <div className="space-y-2.5">
+                  {editInvoiceModal.rows.map((row, index) => {
+                    const selectedItem = items.find(i => i.id === row.itemId);
+                    return (
+                      <div
+                        key={row.tempId}
+                        className="flex flex-col sm:flex-row gap-2.5 items-end sm:items-center bg-slate-50 dark:bg-slate-800/30 p-3 rounded-2xl border border-slate-100 dark:border-slate-800"
+                      >
+                        <span className="text-xs font-mono font-bold text-slate-400 w-6 text-center hidden sm:inline-block">
+                          {index + 1}
+                        </span>
+
+                        <div className="flex-1 w-full">
+                          <label className="block text-[10px] font-bold text-slate-400 mb-1 sm:hidden">الصنف</label>
+                          <select
+                            value={row.itemId}
+                            onChange={(e) => handleUpdateRowInEditInvoice(row.tempId, 'itemId', e.target.value)}
+                            className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500 dark:text-white"
+                          >
+                            <option value="">-- اختر صنفاً --</option>
+                            {items.map(i => (
+                              <option key={i.id} value={i.id}>{i.name} {i.unit ? `(${i.unit})` : ''}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="w-full sm:w-36 relative">
+                          <label className="block text-[10px] font-bold text-slate-400 mb-1 sm:hidden">الكمية</label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="1"
+                              value={row.quantity || ''}
+                              onChange={(e) => handleUpdateRowInEditInvoice(row.tempId, 'quantity', parseInt(e.target.value) || 0)}
+                              placeholder="0"
+                              className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-center text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-emerald-500 dark:text-white"
+                            />
+                            {selectedItem?.unit && (
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded pointer-events-none">
+                                {selectedItem.unit}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveRowFromEditInvoice(row.tempId)}
+                          disabled={editInvoiceModal.rows.length <= 1}
+                          className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-30 disabled:hover:bg-transparent rounded-xl transition-colors self-end sm:self-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                          title="حذف الصنف من الفاتورة"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-3">
+              <div className="text-xs text-slate-500 dark:text-slate-400 font-bold">
+                <span>إجمالي الأصناف: <span className="font-mono text-emerald-600 dark:text-emerald-400 text-sm">{editInvoiceModal.rows.length}</span> صنف | </span>
+                <span>إجمالي الوحدات: <span className="font-mono text-emerald-600 dark:text-emerald-400 text-sm">{editInvoiceModal.rows.reduce((acc, curr) => acc + (curr.quantity || 0), 0)}</span> وحدة</span>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setEditInvoiceModal(null)}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold text-sm transition-colors"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveEditedInvoice}
+                  disabled={editInvoiceModal.isSaving || editInvoiceModal.rows.every(r => !r.itemId || r.quantity <= 0)}
+                  className="w-full sm:w-auto px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all"
+                >
+                  {editInvoiceModal.isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  <span>حفظ التعديلات</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -691,6 +1028,13 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
                                  </button>
                                  <div className="w-px h-8 bg-slate-200 dark:bg-slate-700 mx-1"></div>
                                  <button 
+                                   onClick={(e) => { e.stopPropagation(); handleOpenEditInvoiceModal(ref, dayGroup.date, batchItems); }}
+                                   className="p-2.5 text-amber-500 hover:bg-amber-50 hover:text-amber-700 dark:hover:bg-amber-900/20 rounded-xl transition-colors border border-transparent hover:border-amber-200"
+                                   title="تعديل الفاتورة بالكامل (إضافة أصناف، تعديل الكميات أو حذفها)"
+                                 >
+                                    <Edit3 className="w-5 h-5" />
+                                 </button>
+                                 <button 
                                    onClick={(e) => { e.stopPropagation(); handlePrintBatchInvoice(ref, dayGroup.date, batchItems); }}
                                    className="p-2.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-300 rounded-xl transition-colors border border-transparent hover:border-slate-200"
                                    title="طباعة الفاتورة"
@@ -710,12 +1054,23 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
                               </div>
                            </div>
 
-                           {/* Expanded Content (Details Table) */}
+                           {/* Expanded Content (Details Table + Quick Add) */}
                            {isExpanded && (
                              <div className="border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 animate-in slide-in-from-top-4 duration-300 origin-top">
-                               <div className="bg-emerald-50/50 dark:bg-emerald-900/10 px-4 py-2 flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-400 border-b border-emerald-100 dark:border-emerald-800/30">
-                                  <Edit3 className="w-3.5 h-3.5" /> يمكنك تعديل الكميات أو حذف أصناف محددة من الأسفل
+                               <div className="bg-emerald-50/50 dark:bg-emerald-900/10 px-4 py-2.5 flex items-center justify-between text-xs font-bold text-emerald-700 dark:text-emerald-400 border-b border-emerald-100 dark:border-emerald-800/30">
+                                  <div className="flex items-center gap-2">
+                                     <Edit3 className="w-3.5 h-3.5" />
+                                     <span>يمكنك تعديل الصنف والكميات أو حذف أي صنف أدناه، أو إضافة صنف جديد للفاتورة</span>
+                                  </div>
+                                  <button
+                                     onClick={() => handleOpenEditInvoiceModal(ref, dayGroup.date, batchItems)}
+                                     className="text-emerald-700 dark:text-emerald-300 hover:underline flex items-center gap-1 font-bold bg-emerald-100/70 dark:bg-emerald-900/40 px-2.5 py-1 rounded-lg transition-colors"
+                                  >
+                                     <Edit3 className="w-3.5 h-3.5" />
+                                     <span>تعديل الفاتورة في نافذة مستقلة</span>
+                                  </button>
                                </div>
+
                                <table className="w-full text-right">
                                  <thead className="bg-slate-50 dark:bg-slate-800/40 text-slate-400 font-bold text-[10px] uppercase border-b border-slate-100 dark:border-slate-800">
                                    <tr>
@@ -731,14 +1086,27 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
                                       return (
                                         <tr key={sale.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
                                           <td className="px-6 py-3">
-                                            <div className="flex flex-col">
-                                              <span className="font-bold text-slate-700 dark:text-slate-200 text-sm">{item?.name}</span>
-                                            </div>
+                                            {isEditing ? (
+                                              <select
+                                                value={editItemId}
+                                                onChange={(e) => setEditItemId(e.target.value)}
+                                                className="border-2 border-emerald-500 rounded-xl px-3 py-1.5 text-sm font-medium bg-white dark:bg-slate-800 dark:text-white outline-none w-full max-w-sm shadow-sm"
+                                              >
+                                                {items.map(i => (
+                                                  <option key={i.id} value={i.id}>{i.name} {i.unit ? `(${i.unit})` : ''}</option>
+                                                ))}
+                                              </select>
+                                            ) : (
+                                              <div className="flex flex-col">
+                                                <span className="font-bold text-slate-700 dark:text-slate-200 text-sm">{item?.name}</span>
+                                              </div>
+                                            )}
                                           </td>
                                           <td className="px-6 py-3 text-center">
                                             {isEditing ? (
                                               <input 
                                                 type="number" 
+                                                min="1"
                                                 className="w-24 text-center border-2 border-emerald-500 rounded-lg px-2 py-1 text-sm font-bold dark:bg-slate-800 dark:text-white outline-none shadow-sm"
                                                 value={editQuantity}
                                                 onChange={(e) => setEditQuantity(parseInt(e.target.value) || 0)}
@@ -755,13 +1123,25 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
                                             <div className="flex justify-center gap-2">
                                               {isEditing ? (
                                                 <>
-                                                  <button onClick={() => { onUpdateSale(sale.id, editQuantity); setEditingSaleId(null); }} className="text-white bg-emerald-500 hover:bg-emerald-600 p-1.5 rounded-lg shadow-sm transition-colors" title="حفظ"><Check className="w-3.5 h-3.5"/></button>
-                                                  <button onClick={() => setEditingSaleId(null)} className="text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 p-1.5 rounded-lg shadow-sm transition-colors" title="إلغاء"><X className="w-3.5 h-3.5"/></button>
+                                                  <button 
+                                                    onClick={() => { onUpdateSale(sale.id, editQuantity, editItemId); setEditingSaleId(null); }} 
+                                                    className="text-white bg-emerald-500 hover:bg-emerald-600 p-1.5 rounded-lg shadow-sm transition-colors" 
+                                                    title="حفظ التعديل"
+                                                  >
+                                                    <Check className="w-3.5 h-3.5"/>
+                                                  </button>
+                                                  <button 
+                                                    onClick={() => setEditingSaleId(null)} 
+                                                    className="text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 p-1.5 rounded-lg shadow-sm transition-colors" 
+                                                    title="إلغاء"
+                                                  >
+                                                    <X className="w-3.5 h-3.5"/>
+                                                  </button>
                                                 </>
                                               ) : (
                                                 <>
-                                                  <button onClick={() => startEdit(sale)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded-lg transition-colors" title="تعديل الكمية"><Edit3 className="w-4 h-4"/></button>
-                                                  <button onClick={() => { if(confirm('حذف هذا العنصر فقط؟')) onDeleteSale(sale.id); }} className="text-rose-500 hover:bg-rose-50 p-1.5 rounded-lg transition-colors" title="حذف الصنف"><Trash2 className="w-4 h-4"/></button>
+                                                  <button onClick={() => startEdit(sale)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded-lg transition-colors" title="تعديل الصنف والكمية"><Edit3 className="w-4 h-4"/></button>
+                                                  <button onClick={() => { if(confirm('حذف هذا الصنف من الفاتورة؟')) onDeleteSale(sale.id); }} className="text-rose-500 hover:bg-rose-50 p-1.5 rounded-lg transition-colors" title="حذف الصنف"><Trash2 className="w-4 h-4"/></button>
                                                 </>
                                               )}
                                             </div>
@@ -771,6 +1151,82 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
                                     })}
                                  </tbody>
                                </table>
+
+                               {/* Quick Add Inline to this invoice */}
+                               <div className="p-4 bg-slate-50/80 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800">
+                                 <div className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-1.5">
+                                   <Plus className="w-4 h-4 text-emerald-500" />
+                                   <span>إضافة صنف جديد إلى هذه الفاتورة ({ref}):</span>
+                                 </div>
+                                 <div className="flex flex-col sm:flex-row gap-3 items-end">
+                                   <div className="flex-1 w-full">
+                                     <label className="block text-[10px] font-bold text-slate-400 mb-1">اختر الصنف</label>
+                                     <select
+                                       value={quickAddItems[ref]?.itemId || ''}
+                                       onChange={(e) => {
+                                         const val = e.target.value;
+                                         setQuickAddItems(prev => ({
+                                           ...prev,
+                                           [ref]: {
+                                             itemId: val,
+                                             quantity: prev[ref]?.quantity || 1
+                                           }
+                                         }));
+                                       }}
+                                       className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500 dark:text-white"
+                                     >
+                                       <option value="">-- اختر صنفاً لإضافته للفاتورة --</option>
+                                       {items.map(i => (
+                                         <option key={i.id} value={i.id}>{i.name} {i.unit ? `(${i.unit})` : ''}</option>
+                                       ))}
+                                     </select>
+                                   </div>
+
+                                   <div className="w-full sm:w-36">
+                                     <label className="block text-[10px] font-bold text-slate-400 mb-1">الكمية</label>
+                                     <div className="relative">
+                                       <input
+                                         type="number"
+                                         min="1"
+                                         value={quickAddItems[ref]?.quantity ?? 1}
+                                         onChange={(e) => {
+                                           const qty = parseInt(e.target.value) || 0;
+                                           setQuickAddItems(prev => ({
+                                             ...prev,
+                                             [ref]: {
+                                               itemId: prev[ref]?.itemId || '',
+                                               quantity: qty
+                                             }
+                                           }));
+                                         }}
+                                         className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-center text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-emerald-500 dark:text-white"
+                                       />
+                                       {(() => {
+                                         const selectedItem = items.find(i => i.id === quickAddItems[ref]?.itemId);
+                                         return selectedItem?.unit ? (
+                                           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded pointer-events-none">
+                                             {selectedItem.unit}
+                                           </span>
+                                         ) : null;
+                                       })()}
+                                     </div>
+                                   </div>
+
+                                   <button
+                                     type="button"
+                                     onClick={() => handleQuickAddItemToInvoice(ref, dayGroup.date, batchItems[0]?.timestamp)}
+                                     disabled={isQuickAdding === ref || !quickAddItems[ref]?.itemId || (quickAddItems[ref]?.quantity || 0) <= 0}
+                                     className="w-full sm:w-auto px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 shadow-sm shadow-emerald-500/20 transition-all active:scale-95"
+                                   >
+                                     {isQuickAdding === ref ? (
+                                       <Loader2 className="w-4 h-4 animate-spin" />
+                                     ) : (
+                                       <Plus className="w-4 h-4" />
+                                     )}
+                                     <span>إضافة للفاتورة</span>
+                                   </button>
+                                 </div>
+                               </div>
                              </div>
                            )}
                          </div>
@@ -794,21 +1250,38 @@ const SalesEntryPage: React.FC<Props> = ({ items, sales, materials, recipes, onS
                                   const isEditing = editingSaleId === sale.id;
                                   return (
                                     <tr key={sale.id} className="hover:bg-white dark:hover:bg-slate-800">
-                                      <td className="px-6 py-2 text-sm text-slate-600 dark:text-slate-300">{item?.name}</td>
+                                      <td className="px-6 py-2 text-sm text-slate-600 dark:text-slate-300">
+                                        {isEditing ? (
+                                          <select
+                                            value={editItemId}
+                                            onChange={(e) => setEditItemId(e.target.value)}
+                                            className="border-2 border-emerald-500 rounded-xl px-2.5 py-1 text-sm bg-white dark:bg-slate-800 dark:text-white"
+                                          >
+                                            {items.map(i => (
+                                              <option key={i.id} value={i.id}>{i.name} {i.unit ? `(${i.unit})` : ''}</option>
+                                            ))}
+                                          </select>
+                                        ) : (
+                                          item?.name
+                                        )}
+                                      </td>
                                       <td className="px-6 py-2 text-center">
                                          {isEditing ? (
-                                            <input type="number" value={editQuantity} onChange={(e) => setEditQuantity(parseInt(e.target.value)||0)} className="w-16 text-center border rounded dark:bg-slate-900 dark:text-white" />
+                                            <input type="number" min="1" value={editQuantity} onChange={(e) => setEditQuantity(parseInt(e.target.value)||0)} className="w-16 text-center border-2 border-emerald-500 rounded-lg dark:bg-slate-900 dark:text-white font-bold" />
                                          ) : (
                                             <span className="font-mono font-bold text-sm">{sale.quantitySold} <span className="text-[10px] font-normal text-slate-400">{item?.unit}</span></span>
                                          )}
                                       </td>
                                       <td className="px-6 py-2 text-center flex justify-center gap-2">
                                           {isEditing ? (
-                                            <button onClick={() => { onUpdateSale(sale.id, editQuantity); setEditingSaleId(null); }} className="text-emerald-500"><Check className="w-3.5 h-3.5"/></button>
+                                            <>
+                                              <button onClick={() => { onUpdateSale(sale.id, editQuantity, editItemId); setEditingSaleId(null); }} className="text-emerald-500 p-1 hover:bg-emerald-50 rounded" title="حفظ"><Check className="w-3.5 h-3.5"/></button>
+                                              <button onClick={() => setEditingSaleId(null)} className="text-slate-400 p-1 hover:bg-slate-100 rounded" title="إلغاء"><X className="w-3.5 h-3.5"/></button>
+                                            </>
                                           ) : (
-                                            <button onClick={() => startEdit(sale)} className="text-blue-400"><Edit3 className="w-3.5 h-3.5"/></button>
+                                            <button onClick={() => startEdit(sale)} className="text-blue-400 p-1 hover:bg-blue-50 rounded" title="تعديل"><Edit3 className="w-3.5 h-3.5"/></button>
                                           )}
-                                          {!isEditing && <button onClick={() => { if(confirm('حذف؟')) onDeleteSale(sale.id); }} className="text-rose-400"><Trash2 className="w-3.5 h-3.5"/></button>}
+                                          {!isEditing && <button onClick={() => { if(confirm('حذف هذا الصنف؟')) onDeleteSale(sale.id); }} className="text-rose-400 p-1 hover:bg-rose-50 rounded" title="حذف"><Trash2 className="w-3.5 h-3.5"/></button>}
                                       </td>
                                     </tr>
                                   )

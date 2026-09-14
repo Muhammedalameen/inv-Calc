@@ -229,10 +229,61 @@ const App: React.FC = () => {
     addToast('تم حذف عملية البيع');
   };
 
-  const handleUpdateSale = async (id: string, quantity: number) => {
-    await db.updateSale(id, quantity);
-    setSales(prev => prev.map(s => s.id === id ? { ...s, quantitySold: quantity } : s));
-    addToast('تم تعديل الكمية بنجاح');
+  const handleDeleteSalesBatch = async (refNumber: string) => {
+    if (!currentRestaurant) return;
+    await db.deleteSalesBatch(refNumber, currentRestaurant.id);
+    setSales(prev => prev.filter(s => s.referenceNumber !== refNumber));
+    addToast('تم حذف الفاتورة بالكامل بنجاح');
+  };
+
+  const handleUpdateSale = async (id: string, quantity: number, itemId?: string) => {
+    await db.updateSale(id, { quantitySold: quantity, itemId });
+    setSales(prev => prev.map(s => s.id === id ? { ...s, quantitySold: quantity, ...(itemId ? { itemId } : {}) } : s));
+    addToast('تم تعديل الصنف بنجاح');
+  };
+
+  const handleUpdateInvoiceBatch = async (
+    refNumber: string,
+    newDate: string,
+    toUpdate: { id: string; itemId: string; quantitySold: number }[],
+    toInsert: Omit<SaleEntry, 'restaurantId'>[],
+    toDeleteIds: string[]
+  ) => {
+    if (!currentRestaurant) return;
+    const insertedWithRestId: SaleEntry[] = toInsert.map(i => ({
+      ...i,
+      restaurantId: currentRestaurant.id
+    }));
+
+    await db.updateInvoiceBatch(
+      refNumber,
+      newDate,
+      toUpdate,
+      insertedWithRestId,
+      toDeleteIds
+    );
+
+    setSales(prev => {
+      const filtered = prev.filter(s => !toDeleteIds.includes(s.id));
+      const updated = filtered.map(s => {
+        if (s.referenceNumber === refNumber) {
+          const matchingUpdate = toUpdate.find(u => u.id === s.id);
+          if (matchingUpdate) {
+            return {
+              ...s,
+              itemId: matchingUpdate.itemId,
+              quantitySold: matchingUpdate.quantitySold,
+              date: newDate
+            };
+          }
+          return { ...s, date: newDate };
+        }
+        return s;
+      });
+      return [...insertedWithRestId, ...updated];
+    });
+
+    addToast('تم حفظ تعديلات الفاتورة بنجاح');
   };
 
   if (!isAuthenticated) {
@@ -428,7 +479,9 @@ const App: React.FC = () => {
             recipes={recipes}
             onSave={handleSaveSales} 
             onDeleteSale={handleDeleteSale}
+            onDeleteSalesBatch={handleDeleteSalesBatch}
             onUpdateSale={handleUpdateSale}
+            onUpdateInvoiceBatch={handleUpdateInvoiceBatch}
           />
         );
       case 'reports':
